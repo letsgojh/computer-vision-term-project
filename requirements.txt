@@ -1,0 +1,20 @@
+# Core
+numpy
+pandas
+pillow
+opencv-python
+tqdm
+pyyaml
+matplotlib
+
+# Models (② generation, ④ training)
+torch
+torchvision
+timm
+transformers
+datasets
+diffusers
+accelerate
+
+# Evaluation
+scikit-learn
