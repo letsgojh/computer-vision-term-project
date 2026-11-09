@@ -1,0 +1,20 @@
+# ③ 후처리 · split 설정
+
+# original / resize / recapture 저장 품질 (진짜·가짜 공통으로 다시 저장)
+jpeg_quality: 95
+
+# 카톡 압축본 흉내. 초안 값: 실제 카톡으로 보낸 사진에
+#   python -m src.preprocess.postprocess inspect <받은 사진>
+# 을 돌려 나온 해상도·품질로 확정할 것.
+kakao:
+  long_side: 1280
+  quality: 75
+
+# 마켓 업로드 리사이즈 흉내
+resize:
+  short_side: 512
+
+split:
+  ratios: [0.7, 0.15, 0.15]   # train / val / test (이미지 장수 기준, 물건 단위로 배정)
+  seed: 42
+  test_photographers: []      # 사람 단위로 test에 뺄 촬영자 닉네임 (예: [jaehwan])

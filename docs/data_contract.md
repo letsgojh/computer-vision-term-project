@@ -39,7 +39,9 @@ data/
 └── splits/split.csv         # ③ 확정 후 변경 금지
 ```
 
-`processed/{후처리}/` 아래 파일명은 원래 파일명과 같게 유지합니다. 그래야 `split.csv` 한 장으로 모든 후처리 버전을 찾을 수 있습니다.
+`processed/{후처리}/` 아래 파일은 **원래 파일의 stem + `.jpg`** 입니다 (예: `fakeA_jaehwan_mouse_001_s42.png` → `processed/kakao/fakeA_jaehwan_mouse_001_s42.jpg`). `split.csv`의 `filename`에서 확장자만 `.jpg`로 바꾸면 모든 후처리 버전을 찾을 수 있습니다.
+
+진짜는 카메라 JPEG(EXIF 포함), 가짜는 생성기 PNG라서 그대로 학습하면 모델이 이미지 내용이 아니라 파일 형식으로 맞힐 수 있습니다. 그래서 `original`을 포함한 모든 후처리 결과는 **EXIF를 지우고 같은 방식으로 다시 저장한 JPEG**입니다. 모델 학습·평가에는 `data/real/`, `data/fake/`가 아니라 `data/processed/`만 씁니다.
 
 이미지 파일은 Git에 올리지 않습니다 (`.gitignore` 처리). 공유 드라이브에 위 구조 그대로 올리고, Git에는 CSV와 코드만 올립니다.
 
