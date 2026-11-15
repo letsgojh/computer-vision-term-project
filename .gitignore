@@ -27,3 +27,11 @@ outputs/**/*
 .DS_Store
 .vscode/
 .idea/
+
+# Model 1 local tooling and generated artifacts
+.venv-*/
+.pytest_cache/
+.cache/
+*.onnx
+*.npy
+*.npz
