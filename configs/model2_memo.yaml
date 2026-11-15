@@ -1,0 +1,51 @@
+# 재현을 위한 시드
+seed: 42
+
+# 데이터: 메타데이터 CSV, 이미지 루트, 학습에서 뺄 유형과 학습용 후처리
+data:
+  metadata: data/splits/model1_metadata.csv
+  root: .
+  leakage_columns: [item_id]
+  verify_images: true
+  exclude_from_training: [B]
+  train_postprocess: [original]
+
+# 메모 위치 찾기: 탐지기, 수동 박스, 면적 범위, 경고 기준
+locate:
+  boxes_csv: outputs/model2/memo_boxes.csv
+  manual_csv: metadata/memo_boxes_manual.csv
+  manual_splits: [train]
+  model_id: IDEA-Research/grounding-dino-tiny
+  queries: [a handwritten note, a sticky note, a piece of paper with handwriting]
+  box_threshold: 0.3
+  text_threshold: 0.25
+  min_area_frac: 0.002
+  max_area_frac: 0.8
+  warn_rate_diff: 0.10
+
+# 크롭: 박스 여유와 학습용 jitter
+crop:
+  margin: 0.15
+  jitter_shift: 0.05
+  jitter_scale: [0.9, 1.1]
+
+# 모델: 백본과 입력 정규화
+model:
+  name: efficientnet_b0
+  pretrained: true
+  input_size: 384
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  drop_rate: 0.2
+
+# 학습: 최적화와 조기 종료 설정
+training:
+  device: auto
+  epochs: 20
+  batch_size: 16
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  num_workers: 2
+  amp: true
+  patience: 5
+  output_dir: outputs/model2
