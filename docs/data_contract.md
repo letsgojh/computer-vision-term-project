@@ -101,3 +101,22 @@ data/
 | `prob_fake` | 가짜일 확률 (0~1) |
 
 평가 담당은 `filename`으로 `split.csv`와 조인해서 유형별 × 후처리별 결과표를 만듭니다.
+
+### 3-5. `data/splits/model1_metadata.csv` — 모델 1 학습 입력 (후처리 담당, `split.py export`로 생성)
+
+`split.csv`에서 자동으로 만드는 파생 파일이라 Git에 올리지 않습니다. 형식 통일은 이슈 #3에서 논의 중입니다.
+
+| 컬럼 | 설명 | `split.csv`의 대응 |
+|---|---|---|
+| `image_path` | `data/processed/{후처리}/{stem}.jpg` | `filename` |
+| `label` | `0` / `1` | `label` |
+| `fake_type` | `real` / `A` / `B` / `C` (외부 데이터는 `unknown`) | `fake_type` |
+| `source_id` | 같은 원본 묶음 | `group_id` |
+| `split` | `train` / `val` / `test` | `split` |
+| `domain` | `trade` (우리 인증샷), 외부 데이터는 `general` | — |
+| `item_id` | 물건 | `object` |
+| `photographer` | 촬영자 (C는 빈칸) | `photographer` |
+| `postprocess` | 후처리 버전 | — |
+
+- 후처리 버전마다 한 행이므로, 같은 사진의 `original`과 `kakao`는 `image_path`만 다르고 `source_id`·`split`은 같습니다.
+- 촬영자 컬럼은 모델 1이 누수 검사하는 `photographer_id`가 아니라 `photographer`로 씁니다. split이 물건 단위라서 한 촬영자의 물건이 여러 split에 나뉘기 때문입니다. 촬영자 단위로 분리하려면 `configs/preprocess.yaml`의 `test_photographers`를 쓰세요.

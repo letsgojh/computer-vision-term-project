@@ -120,3 +120,54 @@ def test_fake_with_unknown_source_is_rejected(dummy):
     fake.loc[0, "source_filename"] = "nobody_nothing_999.jpg"
     with pytest.raises(ValueError, match="real_metadata"):
         split.build_rows(real, fake)
+
+
+# ---- export (모델 1 형식) ----
+
+def _model1_errors(df, leakage_columns=("item_id",)):
+    """모델 1(Model_A src/dataset.py read_metadata)의 이미지 외 검사를 그대로 옮긴 것."""
+    errors = []
+    for col in ["image_path", "label", "fake_type", "source_id", "split"]:
+        if col not in df or df[col].astype(str).str.strip().eq("").any():
+            errors.append(f"필수 컬럼 없음/빈값: {col}")
+    labels = pd.to_numeric(df["label"], errors="coerce")
+    ok = ((labels == 0) & (df["fake_type"] == "real")) | ((labels == 1) & df["fake_type"].isin(["A", "B", "C", "unknown"]))
+    if not ok.all():
+        errors.append("label/fake_type 오류")
+    for col in ["source_id", *leakage_columns]:
+        present = df[df[col].astype(str).str.strip() != ""]
+        if (present.groupby(col)["split"].nunique() > 1).any():
+            errors.append(f"누수: {col}")
+    if df["image_path"].duplicated().any():
+        errors.append("image_path 중복")
+    return errors
+
+
+def test_export_passes_model1_checks(dummy):
+    _, rows = dummy
+    result, _ = split.build(rows, [0.7, 0.15, 0.15], seed=42)
+    out = split.to_model1(result, variants=["original", "kakao"])
+    assert list(out.columns) == split.MODEL1_COLUMNS
+    assert len(out) == 2 * len(result)
+    assert _model1_errors(out) == []
+    row = out[(out["postprocess"] == "kakao") & (out["image_path"].str.contains("fakeA_jaehwan_mouse_001_s1"))].iloc[0]
+    assert row["image_path"] == "data/processed/kakao/fakeA_jaehwan_mouse_001_s1.jpg"
+    assert row["source_id"] == "jaehwan_mouse_001" and row["item_id"] == "mouse" and row["domain"] == "trade"
+
+
+def test_export_paths_point_to_postprocess_outputs(dummy):
+    root, rows = dummy
+    data = root / "data"
+    postprocess.run(data, CFG, ["original"])
+    result, _ = split.build(rows, [0.7, 0.15, 0.15], seed=42)
+    out, missing = split.drop_missing(split.to_model1(result, ["original", "recapture"]), data)
+    # original은 전부 있고, recapture는 사람이 찍은 일부만 있어서 나머지는 빠진다
+    assert (out["postprocess"] == "original").sum() == len(result)
+    assert set(missing["postprocess"]) == {"recapture"}
+
+
+def test_export_rejects_unknown_variant(dummy):
+    _, rows = dummy
+    result, _ = split.build(rows, [0.7, 0.15, 0.15], seed=42)
+    with pytest.raises(ValueError, match="후처리"):
+        split.to_model1(result, ["jpeg50"])

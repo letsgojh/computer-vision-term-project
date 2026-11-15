@@ -3,6 +3,7 @@
     python -m src.preprocess.split build [--force]   # 2주차: 처음 만들기
     python -m src.preprocess.split append            # 3주차~: 새 행을 train에만 추가
     python -m src.preprocess.split check             # 누수 점검
+    python -m src.preprocess.split export            # 모델 1 형식 CSV 내보내기
 
 입력:  metadata/real_metadata.csv, metadata/fake_mapping.csv
 출력:  data/splits/split.csv
@@ -22,7 +23,7 @@ import pandas as pd
 import yaml
 
 from src.common import paths
-from src.common.schema import FAKE_TYPES, SPLIT_COLUMNS, SPLITS
+from src.common.schema import FAKE_TYPES, MODEL1_COLUMNS, POSTPROCESSES, SPLIT_COLUMNS, SPLITS
 
 
 def _stem(filename: str) -> str:
@@ -161,6 +162,36 @@ def summary(split: pd.DataFrame) -> pd.DataFrame:
     return table.loc[order, cols]
 
 
+def to_model1(split: pd.DataFrame, variants=("original",), domain: str = "trade") -> pd.DataFrame:
+    """split.csv를 모델 1 형식으로 바꾼다. 후처리 버전마다 한 행씩 (image_path가 다름).
+
+    image_path는 data/ 를 담은 폴더 기준 상대 경로라서, 모델 1 설정의 data.root를 그 폴더로 두면 된다.
+    """
+    bad = [v for v in variants if v not in POSTPROCESSES]
+    if bad:
+        raise ValueError(f"후처리 이름 오류: {bad} (가능: {POSTPROCESSES})")
+    stems = split["filename"].map(_stem)
+    frames = [pd.DataFrame({
+        "image_path": f"data/processed/{v}/" + stems + ".jpg",
+        "label": split["label"],
+        "fake_type": split["fake_type"],
+        "source_id": split["group_id"],
+        "split": split["split"],
+        "domain": domain,
+        "item_id": split["object"],
+        "photographer": split["photographer"],
+        "postprocess": v,
+    }) for v in variants]
+    return pd.concat(frames, ignore_index=True)[MODEL1_COLUMNS]
+
+
+def drop_missing(model1: pd.DataFrame, data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """이미지 파일이 없는 행을 뺀다. (남은 행, 뺀 행). recapture처럼 일부만 있는 후처리용."""
+    rel = model1["image_path"].str.removeprefix("data/")
+    exists = rel.map(lambda p: (data_root / p).is_file())
+    return model1[exists].reset_index(drop=True), model1[~exists]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=paths.ROOT / "configs" / "preprocess.yaml")
@@ -172,7 +203,30 @@ def main(argv=None):
     p_build.add_argument("--force", action="store_true", help="이미 행이 있는 split.csv를 덮어쓰기")
     sub.add_parser("append", help="새 행을 train에만 추가")
     sub.add_parser("check", help="누수·형식 점검")
+    p_export = sub.add_parser("export", help="모델 1 형식 CSV로 내보내기")
+    p_export.add_argument("--variants", nargs="+", default=["original"], choices=POSTPROCESSES)
+    p_export.add_argument("--domain", default="trade")
+    p_export.add_argument("--out", type=Path, default=paths.DATA / "splits" / "model1_metadata.csv")
+    p_export.add_argument("--data-root", type=Path, default=paths.DATA)
+    p_export.add_argument("--skip-missing", action="store_true", help="이미지가 없는 행은 빼기 (recapture용)")
     args = ap.parse_args(argv)
+
+    if args.cmd == "export":
+        split = _read_csv(args.split_csv)
+        errors = check(split)
+        if errors:
+            sys.exit("\n".join(["split.csv 점검 실패 — 먼저 고치세요:"] + [f"  - {e}" for e in errors]))
+        out = to_model1(split, args.variants, args.domain)
+        if args.skip_missing:
+            out, missing = drop_missing(out, args.data_root)
+            if len(missing):
+                print(f"이미지 없음으로 뺀 행 {len(missing)}건:")
+                print(missing.groupby("postprocess").size().to_string())
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        out.to_csv(args.out, index=False)
+        print(f"저장: {args.out} ({len(out)}행)")
+        print(pd.crosstab([out["postprocess"], out["split"]], out["fake_type"]).to_string())
+        return
 
     if args.cmd in ("build", "append"):
         with open(args.config) as f:

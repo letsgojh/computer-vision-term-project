@@ -22,6 +22,9 @@ FAKE_MAPPING_COLUMNS = [
 ]
 SPLIT_COLUMNS = ["filename", "label", "fake_type", "object", "group_id", "photographer", "split"]
 PREDICTION_COLUMNS = ["filename", "postprocess", "prob_fake"]
+# 모델 1(Model_A) 학습 입력 형식. split.csv에서 만든다 (src/preprocess/split.py export).
+# photographer는 물건 단위 split이라 여러 split에 걸칠 수 있어서, 모델 1이 누수 검사하는 photographer_id 이름을 쓰지 않는다.
+MODEL1_COLUMNS = ["image_path", "label", "fake_type", "source_id", "split", "domain", "item_id", "photographer", "postprocess"]
 
 
 def fake_ab_name(fake_type: str, source_filename: str, seed: int) -> str:

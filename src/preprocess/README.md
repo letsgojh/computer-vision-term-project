@@ -37,6 +37,18 @@ python -m src.preprocess.split check      # 누수·형식 점검 + 유형별 �
 - `configs/preprocess.yaml`의 `test_photographers`에 닉네임을 넣으면 그 사람의 물건은 모두 test로 갑니다.
 - 보강 데이터(`is_reinforcement=1`)는 train에만 들어갑니다. 원본이나 물건이 val/test에 있는 보강분은 넣으면 누수가 되므로 **건너뛰고 목록을 출력**합니다. 생성 담당에게 train 원본으로만 보강해 달라고 전달하세요.
 
+### 모델 1 형식으로 내보내기 — `split.py export`
+
+```bash
+python -m src.preprocess.split export                                  # original → data/splits/model1_metadata.csv
+python -m src.preprocess.split export --variants original kakao resize # 후처리별 평가용 (버전마다 한 행)
+python -m src.preprocess.split export --variants recapture --skip-missing --out data/splits/model1_recapture.csv
+```
+
+- `split.csv`를 모델 1의 `metadata.csv` 형식(`image_path,label,fake_type,source_id,split,domain,...`)으로 바꿉니다. 형식은 [`docs/data_contract.md`](../../docs/data_contract.md) 3-5 참고.
+- `image_path`는 `data/processed/{후처리}/{stem}.jpg`입니다. 모델 1 설정의 `data.root`를 `data/`가 들어 있는 폴더(로컬은 프로젝트 루트)로 두세요.
+- `recapture`는 일부 사진만 있으므로 `--skip-missing`으로 없는 행을 뺍니다.
+
 ## 더미 데이터로 미리 돌려보기
 
 ```bash
