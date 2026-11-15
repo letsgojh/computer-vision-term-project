@@ -1,0 +1,11 @@
+# torch는 CUDA 빌드로 먼저 설치한다:
+# pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0 torchvision==0.26.0
+numpy
+pandas
+pillow
+pyyaml
+tqdm
+scikit-learn
+timm
+transformers
+pytest
