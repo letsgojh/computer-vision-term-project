@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True)
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    parser.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--allow-smoke", action="store_true")
     parser.add_argument("--explain", action="store_true", help="Save Fake-logit Grad-CAM; not a manipulation mask")
     parser.add_argument("--explain-dir", help="Output folder; default outputs/explanations/<image+checkpoint hashes>")

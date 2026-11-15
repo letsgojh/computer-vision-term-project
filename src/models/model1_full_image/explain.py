@@ -1,5 +1,6 @@
 """Fake-logit Grad-CAM and factual spatial summaries; never a manipulation mask."""
 
+from contextlib import nullcontext
 import hashlib
 import json
 import os
@@ -52,7 +53,7 @@ def generate_gradcam(model, tensor, target_layer=None):
         with torch.inference_mode(False), torch.enable_grad():
             # Input gradients also enable the graph for a fully frozen backbone.
             inputs = tensor.detach().clone().float().requires_grad_(True)
-            with torch.autocast(device_type=inputs.device.type, enabled=False):
+            with (torch.autocast(device_type="cuda", enabled=False) if inputs.device.type == "cuda" else nullcontext()):
                 logits = model(inputs)
                 if logits.shape != (1,) or not torch.isfinite(logits).all():
                     raise ValueError("Expected one finite Fake logit.")

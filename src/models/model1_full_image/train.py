@@ -1,6 +1,7 @@
 """Train full-image Real/Fake classification without using test data for selection."""
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import shutil
 from pathlib import Path
@@ -29,17 +30,22 @@ def run_epoch(model, loader, criterion, device, optimizer=None, scaler=None, amp
         if training:
             optimizer.zero_grad(set_to_none=True)
         with torch.set_grad_enabled(training):
-            with torch.autocast(device_type=device.type, enabled=amp):
+            with (torch.autocast(device_type="cuda") if amp and device.type == "cuda" else nullcontext()):
                 logits = model(images)
                 loss = criterion(logits, targets)
             if not torch.isfinite(loss):
                 raise RuntimeError("Non-finite loss. Check images, learning rate and AMP settings.")
             if training:
-                previous_scale = scaler.get_scale()
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                updates += int(scaler.get_scale() >= previous_scale)
+                if scaler is not None:
+                    previous_scale = scaler.get_scale()
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                    updates += int(scaler.get_scale() >= previous_scale)
+                else:
+                    loss.backward()
+                    optimizer.step()
+                    updates += 1
         total_loss += loss.item() * len(targets)
         labels.extend(targets.detach().cpu().tolist())
         probabilities.extend(logits.detach().float().sigmoid().cpu().tolist())
@@ -47,10 +53,12 @@ def run_epoch(model, loader, criterion, device, optimizer=None, scaler=None, amp
     return total_loss / len(labels), labels, probabilities, updates
 
 
-def train(config_path):
+def train(config_path, device_name=None):
     """Train with validation F1 selection, best/last checkpoints and early stopping."""
     config = load_config(config_path)
     settings, data = config["training"], config["data"]
+    if device_name is not None:
+        settings["device"] = device_name
     seed_everything(config["seed"])
     device = select_device(settings["device"])
     df = read_metadata(data["metadata"], data["root"], data.get("leakage_columns", []), data.get("verify_images", True))
@@ -90,7 +98,7 @@ def train(config_path):
     optimizer = torch.optim.AdamW(model.parameters(), lr=settings["learning_rate"], weight_decay=settings["weight_decay"])
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=settings["epochs"])
     amp = bool(settings["amp"] and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=amp, init_scale=settings.get("amp_init_scale", 1024))
+    scaler = torch.amp.GradScaler("cuda", init_scale=settings.get("amp_init_scale", 1024)) if amp else None
     criterion = nn.BCEWithLogitsLoss()
     best_f1, stale, history = -1.0, 0, []
     print(f"Training: AMP={amp}, batch_size={batch_size}, pretrained={config['model']['pretrained']}")
@@ -113,7 +121,7 @@ def train(config_path):
         scheduler.step()
         checkpoint = {
             "format_version": 1, "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
-            "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict(),
+            "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict() if scaler is not None else {},
             "epoch": epoch, "optimizer_updates": updates, "best_f1": best_f1, "stale_epochs": stale, "threshold": float(threshold),
             "threshold_source": "validation_f1" if settings["tune_threshold"] else "fixed_config",
             "config": config, "is_smoke": smoke, "environment": environment,
@@ -138,9 +146,10 @@ def main():
     """Expose training as python -m src.models.model1_full_image.train."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/model1_team.yaml")
+    parser.add_argument("--device", choices=["auto", "cuda", "mps", "cpu"], help="Override training.device")
     args = parser.parse_args()
     try:
-        train(args.config)
+        train(args.config, args.device)
     except torch.cuda.OutOfMemoryError:
         parser.exit(1, "CUDA out of memory: reduce training.batch_size in the config.\n")
     except (ValueError, FileNotFoundError, FileExistsError) as exc:

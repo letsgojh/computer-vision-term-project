@@ -77,7 +77,7 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--config", help="Optional new data/device settings; checkpoint preprocessing stays fixed")
     parser.add_argument("--output-dir")
-    parser.add_argument("--device", choices=["auto", "cuda", "cpu"])
+    parser.add_argument("--device", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--allow-smoke", action="store_true")
     args = parser.parse_args()
     try:

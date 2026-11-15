@@ -35,7 +35,8 @@ def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.use_deterministic_algorithms(True, warn_only=True)
@@ -48,19 +49,30 @@ def seed_worker(worker_id):
     np.random.seed(seed)
 
 
+DEVICE_CHOICES = ("auto", "cuda", "mps", "cpu")
+
+
 def select_device(requested="auto"):
-    """Choose CUDA when available and clearly diagnose CPU fallback."""
-    if requested not in {"auto", "cuda", "cpu"}:
-        raise ValueError("device must be auto, cuda, or cpu")
-    available = torch.cuda.is_available()
-    if requested == "cuda" and not available:
+    """Prefer NVIDIA CUDA, then Apple MPS, then CPU; enforce explicit requests."""
+    if requested not in DEVICE_CHOICES:
+        raise ValueError("device must be auto, cuda, mps, or cpu")
+    cuda = torch.cuda.is_available()
+    backend = getattr(torch.backends, "mps", None)
+    mps = backend is not None and backend.is_available()
+    if requested == "cuda" and not cuda:
         raise RuntimeError("CUDA requested but unavailable. Run python -m src.models.model1_full_image.scripts.check_gpu.")
-    device = torch.device("cuda" if available and requested != "cpu" else "cpu")
-    if device.type == "cuda":
+    if requested == "mps" and not mps:
+        reason = "PyTorch was not built with MPS" if backend is None or not backend.is_built() else "MPS is unavailable on this macOS/device"
+        raise RuntimeError(f"MPS requested but unavailable: {reason}. Run python -m src.models.model1_full_image.scripts.check_gpu.")
+    selected = ("cuda" if cuda else "mps" if mps else "cpu") if requested == "auto" else requested
+    device = torch.device(selected)
+    if selected == "cuda":
         print(f"Device: {torch.cuda.get_device_name(0)}; CUDA runtime={torch.version.cuda}")
+    elif selected == "mps":
+        print("Device: Apple GPU (MPS); float32 training, CUDA AMP disabled")
     else:
-        reason = "CPU explicitly selected" if requested == "cpu" else ("CPU-only PyTorch build" if torch.version.cuda is None else "CUDA driver/device unavailable")
-        print(f"Device: CPU ({reason}). Full 384px training can be very slow; NVIDIA CUDA is recommended.")
+        reason = "CPU explicitly selected" if requested == "cpu" else "CUDA and Apple MPS unavailable"
+        print(f"Device: CPU ({reason}). Full 384px training can be very slow.")
     return device
 
 
