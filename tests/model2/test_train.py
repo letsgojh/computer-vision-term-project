@@ -40,3 +40,14 @@ def test_train_requires_both_classes_in_val(tmp_path, smoke_data):
     df.to_csv(bad, index=False)
     with pytest.raises(ValueError, match="both"):
         train(make_cfg(tmp_path, smoke_data, metadata=bad))
+
+
+def test_train_missing_boxes_guided_error(tmp_path, smoke_data):
+    import yaml
+    cfg_path = make_cfg(tmp_path, smoke_data)
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    cfg["locate"]["boxes_csv"] = str(tmp_path / "없음.csv")
+    cfg_path.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    with pytest.raises(ValueError, match="locate"):
+        train(cfg_path)
+    assert not (tmp_path / "out" / "checkpoints").exists()

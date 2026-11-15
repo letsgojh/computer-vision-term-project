@@ -66,6 +66,12 @@ def train(config_path: str | Path, device_name: str | None = None) -> Path:
         raise ValueError("val needs both real and fake rows after filtering "
                          "(exclude_from_training / train_postprocess).")
 
+    bs = tc["batch_size"]
+    gen = torch.Generator().manual_seed(cfg["seed"])
+    # 데이터셋을 먼저 만들어 박스 누락을 폴더 생성 전에 안내한다
+    train_ds = MemoCropDataset(train_df, boxes, build_transform(cfg, train=True))
+    val_ds = MemoCropDataset(val_df, boxes, build_transform(cfg, train=False))
+
     out = Path(tc["output_dir"])
     ckpt_dir = out / "checkpoints"
     for n in ("best", "last"):
@@ -79,15 +85,11 @@ def train(config_path: str | Path, device_name: str | None = None) -> Path:
     if n_manual:
         print(f"경고: val 행 {n_manual}개가 수동 박스를 씁니다 (평가 박스와 달라질 수 있음).")
 
-    bs = tc["batch_size"]
-    gen = torch.Generator().manual_seed(cfg["seed"])
     train_loader = DataLoader(
-        MemoCropDataset(train_df, boxes, build_transform(cfg, train=True)),
-        batch_size=bs, shuffle=True, generator=gen, num_workers=tc["num_workers"],
+        train_ds, batch_size=bs, shuffle=True, generator=gen, num_workers=tc["num_workers"],
         drop_last=len(train_df) % bs == 1)
     val_loader = DataLoader(
-        MemoCropDataset(val_df, boxes, build_transform(cfg, train=False)),
-        batch_size=bs, shuffle=False, num_workers=tc["num_workers"])
+        val_ds, batch_size=bs, shuffle=False, num_workers=tc["num_workers"])
 
     model = build_model(cfg["model"]).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=tc["learning_rate"],
