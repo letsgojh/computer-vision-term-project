@@ -10,7 +10,8 @@ COLS = ["image_path", "label", "fake_type", "source_id", "split", "domain", "ite
 
 
 def _load(root, rel):
-    return Image.open(root / rel).convert("RGB")
+    with Image.open(root / rel) as im:
+        return im.convert("RGB")
 
 
 def _memo_diff(root, df, boxes, a, b):
@@ -63,8 +64,10 @@ def test_resize_variant_is_half_size(smoke_data):
     root = smoke_data.parent
     df = pd.read_csv(smoke_data, keep_default_na=False)
     for stem in df.image_path.map(lambda p: p.rsplit("/", 1)[1]).unique()[:5]:
-        w, h = Image.open(root / "data/processed/original" / stem).size
-        rw, rh = Image.open(root / "data/processed/resize" / stem).size
+        with Image.open(root / "data/processed/original" / stem) as im:
+            w, h = im.size
+        with Image.open(root / "data/processed/resize" / stem) as im:
+            rw, rh = im.size
         assert abs(rw - w // 2) <= 1 and abs(rh - h // 2) <= 1
 
 
