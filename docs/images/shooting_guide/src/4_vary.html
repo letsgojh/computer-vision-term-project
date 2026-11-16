@@ -1,0 +1,54 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="common.css"><script src="scene.js"></script>
+<style>
+  table { border-collapse: collapse; margin-bottom: 26px; font-size: 18px; }
+  td { padding: 6px 22px 6px 0; } td:first-child { font-weight: 700; width: 70px; }
+  td:last-child { color: var(--muted); }
+  .lead { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .seq { display: flex; align-items: flex-start; gap: 12px; }
+  .arrow { font-size: 34px; color: #57606a; padding-top: 80px; }
+  .groups { display: flex; gap: 56px; margin-top: 30px; }
+  .gcap { font-size: 16px; color: var(--muted); margin-top: 4px; max-width: 560px; line-height: 1.45; }
+  .shot { font-size: 16px; font-weight: 700; margin-top: 8px; }
+  .chg { font-size: 15px; color: var(--muted); margin-top: 2px; }
+</style></head><body>
+<h1>4. 사진마다 2가지 이상 바꾸기</h1>
+<table>
+  <tr><td>종이</td><td>포스트잇 · A4 · 노트 · 영수증</td></tr>
+  <tr><td>펜</td><td>볼펜 · 네임펜 · 연필 · 형광펜</td></tr>
+  <tr><td>조명</td><td>자연광 · 형광등 · 어두움</td></tr>
+  <tr><td>배경</td><td>책상 · 바닥 · 침대 · 상자</td></tr>
+  <tr><td>각도</td><td>정면 · 45도 · 위에서</td></tr>
+</table>
+<div id="row1"></div>
+<div class="groups" id="row2"></div>
+<script>
+  const box = (svg, shot, chg) => `<div>${svg}<div class="shot">${shot}</div><div class="chg">${chg}</div></div>`;
+  const arrow = `<div class="arrow">→</div>`;
+  const tilt = (body, cx, cy, deg, k = 1) => `<g transform="translate(${cx} ${cy}) rotate(${deg}) scale(${k}) translate(${-cx} ${-cy})">${body}</g>`;
+
+  // 1행: 좋은 연속 촬영
+  const W = 330, H = 248;
+  const s1 = S.desk(W, H) + S.mouse(120, 125, 0.6, -6) + S.note(250, 135, 92, -5);
+  const s2 = S.desk(W, H) + S.mouse(120, 125, 0.6, -6) + S.note(250, 135, 92, 3, ["2026.11.17"], { paper: "receipt", ink: "#4a4a4a", fontSize: 15 }) + S.light(W, H, "fluorescent");
+  const s3 = S.bed(W, H) + tilt(S.mouse(120, 125, 0.6, -6) + S.note(250, 135, 92, 3, ["2026.11.17"], { paper: "receipt", ink: "#4a4a4a", fontSize: 15 }), 165, 124, 24, 0.9) + S.light(W, H, "fluorescent");
+  document.getElementById("row1").innerHTML =
+    `<div class="label good" style="margin:0 0 8px">좋은 예</div><div class="seq">` +
+    box(S.svg(W, H, s1, "good"), "사진 001", "책상 · 자연광 · 포스트잇") + arrow +
+    box(S.svg(W, H, s2, "good"), "사진 002", "바뀐 것: 조명, 종이") + arrow +
+    box(S.svg(W, H, s3, "good"), "사진 003", "바뀐 것: 배경, 각도") + `</div>`;
+
+  // 2행: 나쁜 예 / 배경을 못 바꾸는 물건
+  const w = 250, h = 188;
+  const b1 = S.desk(w, h) + S.mouse(95, 95, 0.45, -6) + S.note(190, 100, 70, -5, ["2026.11.17"], { fontSize: 13 });
+  const b2 = S.desk(w, h) + S.mouse(95, 95, 0.45, -6) + S.note(194, 112, 70, -2, ["2026.11.17"], { fontSize: 13 });
+  const f1 = S.wall(w, h) + S.fridge(75, 14, 100, 158) + S.note(110, 52, 34, -4, ["2026.11.17"], { fontSize: 6.5 });
+  const f2 = S.wall(w, h) + S.fridgeAngled(80, 22, 80, 158) + S.note(118, 128, 40, 3, ["2026.11.17"], { paper: "a4", ink: "#111", fontSize: 7 }) + S.light(w, h, "dark");
+  document.getElementById("row2").innerHTML =
+    `<div><div class="label bad" style="margin:0 0 8px">나쁜 예</div><div class="seq">` +
+      S.svg(w, h, b1, "bad") + `<div class="arrow" style="padding-top:60px">→</div>` + S.svg(w, h, b2, "bad") +
+    `</div><div class="gcap">메모 위치만 조금 바뀜: 거의 같은 사진</div></div>` +
+    `<div><div class="label good" style="margin:0 0 8px">좋은 예 · 배경을 못 바꾸는 물건 (예: 냉장고)</div><div class="seq">` +
+      S.svg(w, h, f1, "good") + `<div class="arrow" style="padding-top:60px">→</div>` + S.svg(w, h, f2, "good") +
+    `</div><div class="gcap">대신 조명, 종이, 각도, 메모 위치를 바꾸기</div></div>`;
+</script></body></html>

@@ -1,0 +1,24 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="common.css"><script src="scene.js"></script>
+<style>
+  .grid { grid-template-columns: repeat(4, 250px); }
+  .panel .cap { max-width: 250px; }
+  .fmt { font-size: 20px; margin-bottom: 22px; }
+  .fmt code { font-family: "SF Mono", Menlo, monospace; background: #f3f4f6; padding: 3px 9px; border-radius: 5px; font-size: 19px; }
+  .fmt span { color: var(--muted); font-size: 17px; margin-left: 10px; }
+</style></head><body>
+<h1>3. 메모에 쓰는 내용</h1>
+<div class="fmt">형식: <code>YYYY.MM.DD</code><span>숫자(날짜)만 쓰고, 글자는 쓰지 않기</span></div>
+<div class="grid" id="g"></div>
+<script>
+  const W = 250, H = 190, bg = S.desk(W, H);
+  const font = "Noteworthy, 'Bradley Hand', 'Apple SD Gothic Neo', cursive";
+  const n = (lines, fs = 24) => S.svg(W, H, bg + S.note(W / 2, H / 2, 150, -3, lines, { font, fontSize: fs }), "");
+  const P = [
+    [n(["2026.11.17"], 28), "good", "날짜만"],
+    [n(["2026.11.17", "taei"]), "bad", "영문 (닉네임 등)"],
+    [n(["2026.11.17", "태이"]), "bad", "한글"],
+    [n(["010-1234-5678"], 19), "bad", "전화번호 같은 개인정보"],
+  ];
+  document.getElementById("g").innerHTML = P.map(p => S.panel(...p).replace('class="frame "', `class="frame ${p[1]}"`)).join("");
+</script></body></html>

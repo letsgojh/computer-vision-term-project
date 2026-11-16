@@ -1,0 +1,36 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="common.css"><script src="scene.js"></script>
+<style>
+  .row { display: flex; gap: 40px; align-items: flex-start; }
+  ol { list-style: none; margin-top: 6px; }
+  li { display: flex; gap: 14px; margin-bottom: 26px; }
+  .n { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #1f2328; color: #fff;
+       font-weight: 700; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+  .t { font-size: 21px; font-weight: 700; line-height: 1.35; }
+  .d { font-size: 16px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+</style></head><body>
+<h1>1. 기본 구도</h1>
+<div class="row" style="width:1120px">
+  <div>
+    <div id="photo"></div>
+    <div class="label good">좋은 예</div>
+    <div class="cap">마우스 옆에 메모 1장 (마우스 위에 올려도 됨)</div>
+  </div>
+  <ol>
+    <li><div class="n">1</div><div><div class="t">메모는 1장만</div><div class="d">한 사진에 메모를 여러 장 쓰지 않기</div></div></li>
+    <li><div class="n">2</div><div><div class="t">메모 전체가 화면 안에</div><div class="d">네 모서리가 다 보이고, 글씨가 사진에서 읽히는 크기로</div></div></li>
+        <li><div class="n">3</div><div><div class="t">물건이 화면의 30~70%</div><div class="d">너무 멀거나 너무 가깝지 않게</div></div></li>
+  </ol>
+</div>
+<script>
+  const W = 640, H = 480;
+  document.getElementById("photo").innerHTML = S.svg(W, H,
+    S.desk(W, H) +
+    S.mouse(215, 245, 1.25, -6) +
+    S.note(482, 300, 150, -5) +
+    S.dashbox(82, 50, 266, 392) + S.num(82, 50, 3) +
+    S.leader(600, 175, 528, 236) + S.num(600, 175, 1) +
+    S.leader(605, 440, 552, 376) + S.num(605, 440, 2),
+    "good");
+</script>
+</body></html>

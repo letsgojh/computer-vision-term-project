@@ -1,0 +1,128 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="common.css"><script src="scene.js"></script>
+<style>
+  h2 { font-size: 21px; font-weight: 700; margin: 4px 0 12px; }
+  .seq { display: flex; align-items: flex-start; gap: 12px; }
+  .arrow { font-size: 34px; color: #57606a; padding-top: 110px; }
+  .note2 { font-size: 16px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .top { display: flex; gap: 56px; align-items: flex-start; }
+  .grid { grid-template-columns: repeat(3, 300px); margin-top: 6px; }
+  .top + .top { margin-top: 30px; }
+  .panel .cap { max-width: 300px; }
+  .sec { margin-top: 34px; }
+</style></head><body>
+<h1>5. 카메라 설정과 개인정보</h1>
+<div class="top">
+  <div>
+    <h2>아이폰: JPG로 저장되게 설정</h2>
+    <div class="seq" id="phones"></div>
+    <div class="note2">설정 → 카메라 → 포맷 → <b>높은 호환성</b> 선택<br>기본값은 '높은 효율성'(HEIC)이라 반드시 바꿔야 함</div>
+  </div>
+  <div>
+    <h2>갤럭시: 고효율 사진 끄기</h2>
+    <div class="seq" id="galaxy"></div>
+    <div class="note2">카메라 → 설정(톱니바퀴) → 사진 형식 → <b>고효율 사진 끄기</b><br>기본값은 꺼짐(JPG). 메뉴 이름은 기종마다 조금 다를 수 있음</div>
+  </div>
+</div>
+<div class="sec top">
+  <div>
+    <h2>촬영 모드</h2>
+    <div id="cam"></div>
+  </div>
+  <div class="note2" style="margin-top:52px; font-size:18px; color:#1f2328">
+    <b>사진</b> 모드, <b>1×</b> 배율로 찍기<br>
+    <span style="color:#57606a">인물 사진 모드·필터·보정 앱은 쓰지 않기<br>(갤럭시 인물 사진 모드는 HEIC로 저장되기도 함)</span>
+  </div>
+</div>
+<div class="sec"><h2>개인정보가 찍히지 않게</h2><div class="grid" id="g"></div></div>
+<script>
+  const F = "Pretendard Variable, sans-serif";
+  const phone = (title, rows) => {
+    const w = 224, h = 270;
+    let s = `<rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="28" fill="#f2f2f7" stroke="#1f2328" stroke-width="4"/>
+      <rect x="70" y="14" width="60" height="16" rx="8" fill="#1f2328"/>
+      <text x="18" y="70" font-family="${F}" font-size="22" font-weight="700" fill="#1f2328">${title}</text>`;
+    rows.forEach(([label, hl, check], i) => {
+      const y = 92 + i * 46;
+      s += `<rect x="12" y="${y}" width="${w - 24}" height="40" rx="8" fill="${hl ? "#d6e6ff" : "#ffffff"}" stroke="${hl ? "#2f6fdb" : "none"}" stroke-width="2.5"/>
+        <text x="24" y="${y + 26}" font-family="${F}" font-size="16" font-weight="${hl ? 700 : 400}" fill="#1f2328">${label}</text>`
+        + (check ? `<path d="M${w - 38} ${y + 21} l6 6 l11 -13" stroke="#2f6fdb" stroke-width="4" fill="none" stroke-linecap="round"/>` : "")
+        + (!check && hl ? `<text x="${w - 32}" y="${y + 27}" font-family="${F}" font-size="18" fill="#8b929b">›</text>` : "");
+    });
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${s}</svg>`;
+  };
+  const ar = `<div class="arrow">→</div>`;
+  // 갤럭시(One UI) 설정 화면
+  const galaxy = (title, rows) => {
+    const w = 224, h = 270;
+    let s = `<rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="24" fill="#f6f6f6" stroke="#1f2328" stroke-width="4"/>
+      <circle cx="${w / 2}" cy="20" r="6" fill="#1f2328"/>
+      <text x="18" y="72" font-family="${F}" font-size="22" font-weight="700" fill="#1f2328">${title}</text>
+      <rect x="12" y="90" width="${w - 24}" height="${rows.length * 50 + 8}" rx="16" fill="#ffffff"/>`;
+    rows.forEach(([label, hl, toggle], i) => {
+      const y = 94 + i * 50;
+      if (hl) s += `<rect x="16" y="${y}" width="${w - 32}" height="46" rx="12" fill="#d6e6ff" stroke="#2f6fdb" stroke-width="2.5"/>`;
+      s += `<text x="28" y="${y + 29}" font-family="${F}" font-size="16" font-weight="${hl ? 700 : 400}" fill="#1f2328">${label}</text>`;
+      if (toggle) s += `<rect x="${w - 70}" y="${y + 13}" width="40" height="22" rx="11" fill="#b9bec4"/><circle cx="${w - 59}" cy="${y + 24}" r="8" fill="#fff"/>`;
+      else if (hl) s += `<text x="${w - 36}" y="${y + 29}" font-family="${F}" font-size="18" fill="#8b929b">›</text>`;
+    });
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${s}</svg>`;
+  };
+  document.getElementById("galaxy").innerHTML =
+    galaxy("카메라 설정", [["사진 형식", 1], ["동영상"], ["일반"]]) + ar +
+    galaxy("사진 형식", [["고효율 사진", 1, 1]]);
+  document.getElementById("phones").innerHTML =
+    phone("설정", [["일반"], ["카메라", 1], ["사진"]]) + ar +
+    phone("카메라", [["포맷", 1], ["비디오 녹화"], ["설정 유지"]]) + ar +
+    phone("포맷", [["높은 효율성"], ["높은 호환성", 1, 1]]);
+
+  // 촬영 모드 표시
+  const cw = 300, ch = 200;
+  document.getElementById("cam").innerHTML = S.svg(cw, ch,
+    `<rect width="${cw}" height="${ch}" fill="#1f2328"/>
+     <circle cx="95" cy="70" r="24" fill="#3b4148"/><text x="95" y="76" text-anchor="middle" font-family="${F}" font-size="15" fill="#c9d1d9">0.5×</text>
+     <circle cx="150" cy="70" r="28" fill="#3b4148" stroke="#f5c518" stroke-width="3"/><text x="150" y="77" text-anchor="middle" font-family="${F}" font-size="18" font-weight="700" fill="#f5c518">1×</text>
+     <circle cx="205" cy="70" r="24" fill="#3b4148"/><text x="205" y="76" text-anchor="middle" font-family="${F}" font-size="15" fill="#c9d1d9">2×</text>
+     <text x="70" y="150" text-anchor="middle" font-family="${F}" font-size="15" fill="#8b949e">비디오</text>
+     <text x="150" y="150" text-anchor="middle" font-family="${F}" font-size="16" font-weight="700" fill="#f5c518">사진</text>
+     <text x="238" y="150" text-anchor="middle" font-family="${F}" font-size="15" fill="#8b949e">인물 사진</text>
+     <line x1="206" y1="145" x2="270" y2="145" stroke="#cf222e" stroke-width="3"/>`, "good");
+
+  // 개인정보 나쁜 예
+  const W = 300, H = 225;
+  const notif = S.desk(W, H) +
+    `<g transform="translate(150 112) rotate(-8)">
+       <rect x="-62" y="-95" width="124" height="190" rx="18" fill="#1f2328"/>
+       <rect x="-54" y="-82" width="108" height="164" rx="10" fill="#3d5a80"/>
+       <rect x="-48" y="-62" width="96" height="40" rx="9" fill="#f6f8fa"/>
+       <rect x="-40" y="-54" width="60" height="7" rx="3" fill="#57606a"/>
+       <rect x="-40" y="-40" width="80" height="6" rx="3" fill="#8b949e"/>
+       <rect x="-40" y="-30" width="50" height="6" rx="3" fill="#8b949e"/>
+     </g>` + S.note(255, 175, 70, -5, ["2026.11.17"], { fontSize: 12 });
+  // 화면 왼쪽에 사람이 함께 찍힌 경우 (정면 얼굴)
+  const person = `<g transform="translate(68 92)">
+     <path d="M-62 150 Q-60 78 0 72 Q60 78 62 150 Z" fill="#5b7db1"/>
+     <rect x="-13" y="44" width="26" height="30" fill="#e8bf9c"/>
+     <ellipse cx="0" cy="0" rx="46" ry="54" fill="#f0c9a5"/>
+     <path d="M-48 -6 Q-50 -62 0 -60 Q50 -62 48 -6 Q40 -38 0 -36 Q-40 -38 -48 -6 Z" fill="#3b2a20"/>
+     <ellipse cx="-48" cy="4" rx="7" ry="11" fill="#e8bf9c"/><ellipse cx="48" cy="4" rx="7" ry="11" fill="#e8bf9c"/>
+     <path d="M-28 -14 q10 -6 20 0 M8 -14 q10 -6 20 0" stroke="#3b2a20" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+     <circle cx="-18" cy="-2" r="4.5" fill="#1f2328"/><circle cx="18" cy="-2" r="4.5" fill="#1f2328"/>
+     <path d="M0 4 q-5 12 2 15" stroke="#c99a76" stroke-width="3" fill="none" stroke-linecap="round"/>
+     <path d="M-14 30 q14 11 28 0" stroke="#a5523f" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+   </g>`;
+  const face = S.desk(W, H) + person + S.mouse(190, 120, 0.42, -6) + S.note(255, 180, 62, -5, ["2026.11.17"], { fontSize: 11 });
+  const label = S.floor(W, H) +
+    `<rect x="40" y="40" width="220" height="150" fill="#c8a36b" stroke="#a9844c" stroke-width="3"/>
+     <rect x="135" y="40" width="30" height="150" fill="#d8bb88" opacity="0.7"/>
+     <rect x="60" y="60" width="120" height="78" fill="#ffffff" stroke="#bbb"/>
+     <rect x="70" y="72" width="70" height="7" rx="3" fill="#57606a"/>
+     <rect x="70" y="88" width="96" height="6" rx="3" fill="#8b949e"/>
+     <rect x="70" y="100" width="88" height="6" rx="3" fill="#8b949e"/>
+     <rect x="70" y="116" width="60" height="10" fill="#1f2328"/>` + S.note(215, 160, 62, 4, ["2026.11.17"], { fontSize: 11 });
+  document.getElementById("g").innerHTML = [
+    [S.svg(W, H, notif, "bad"), "bad", "알림이나 메시지가 뜬 휴대폰 화면"],
+    [S.svg(W, H, face, "bad"), "bad", "사람 얼굴이 함께 찍힘"],
+    [S.svg(W, H, label, "bad"), "bad", "이름·주소가 적힌 택배 송장"],
+  ].map(p => S.panel(...p)).join("");
+</script></body></html>

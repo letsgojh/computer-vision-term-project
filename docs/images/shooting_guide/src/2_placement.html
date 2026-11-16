@@ -1,0 +1,25 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<link rel="stylesheet" href="common.css"><script src="scene.js"></script>
+<style> .grid { grid-template-columns: repeat(3, 340px); } </style></head><body>
+<h1>2. 메모 배치</h1>
+<div class="grid" id="g"></div>
+<script>
+  const W = 340, H = 255, bg = S.desk(W, H);
+  const m = (x = 120, y = 128, k = 0.62, r = -6) => S.mouse(x, y, k, r);
+  const n = (x, y, s = 84, r = -5, o = {}) => S.note(x, y, s, r, ["2026.11.17"], o);
+  const P = [
+    [S.svg(W, H, bg + m(120) + n(250, 140, 84, -5), "good"), "good",
+     "메모를 물건 옆에"],
+    [S.svg(W, H, bg + m(150) + n(165, 150, 96, 6), "good"), "good",
+     "메모를 물건 위에 올려도 됨"],
+    [S.svg(W, H, bg + m(125) + n(318, 150, 84, -5), "bad"), "bad",
+     "메모가 화면 밖으로 잘림"],
+    [S.svg(W, H, bg + m(110) + n(240, 85, 74, -6) + n(262, 180, 74, 5), "bad"), "bad",
+     "한 사진에 메모 2장"],
+    [S.svg(W, H, bg + m(150) + n(290, 220, 30, -5), "bad"), "bad",
+     "메모가 너무 작아 글씨가 안 읽힘"],
+    [S.svg(W, H, bg + m(150, 120, 0.22, -6) + n(190, 128, 30, -5), "bad"), "bad",
+     "물건이 너무 멀리 있음 (화면의 30% 미만)"],
+  ];
+  document.getElementById("g").innerHTML = P.map(p => S.panel(...p)).join("");
+</script></body></html>
