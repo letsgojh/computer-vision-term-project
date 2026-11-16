@@ -6,7 +6,7 @@ from PIL import Image
 
 from src.models.model2_memo.boxes import read_boxes
 from src.models.model2_memo.dataset import (
-    MemoCropDataset, MemoCropTransform, build_transform, infer_postprocess,
+    MemoCropDataset, MemoCropTransform, build_transform, crop_region, infer_postprocess,
     read_metadata, select_rows,
 )
 
@@ -131,6 +131,15 @@ def test_crop_uses_box_region():
     m, s = torch.tensor(MEAN).view(3, 1, 1), torch.tensor(STD).view(3, 1, 1)
     assert (t(img, (0.6, 0.2, 0.9, 0.5)) * s + m).mean() > 0.9
     assert (t(img, (0.1, 0.2, 0.4, 0.5)) * s + m).mean() < 0.1
+
+
+def test_crop_region_matches_box():
+    img = Image.new("RGB", (100, 50), (0, 0, 0))
+    img.paste((255, 255, 255), (50, 0, 100, 50))
+    crop = crop_region(img, (0.5, 0.0, 1.0, 1.0), 0.0)
+    assert crop.size == (50, 50)
+    assert crop.getpixel((10, 10)) == (255, 255, 255)
+    assert crop_region(Image.new("L", (40, 40)), (0.0, 0.0, 0.5, 0.5), 0.0).mode == "RGB"
 
 
 def test_build_transform_jitter_only_in_train():

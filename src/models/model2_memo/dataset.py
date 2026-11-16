@@ -100,6 +100,12 @@ def select_rows(df: pd.DataFrame, split: str, exclude_types: Sequence[str] = (),
     return out
 
 
+def crop_region(image: Image.Image, box: Box, margin: float) -> Image.Image:
+    """EXIF 회전, RGB 변환 후 박스를 margin만큼 넓혀 크롭한다 (평가용 크롭 영역)."""
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    return image.crop(to_pixels(expand_box(box, margin), *image.size))
+
+
 class MemoCropTransform:
     """이미지와 박스를 받아 메모 영역 크롭 텐서를 만든다."""
 
@@ -114,11 +120,9 @@ class MemoCropTransform:
         self.post = T.Compose([T.ToTensor(), T.Normalize(list(mean), list(std))])
 
     def __call__(self, image: Image.Image, box: Box) -> torch.Tensor:
-        image = ImageOps.exif_transpose(image).convert("RGB")
         if self.train:
             box = jitter_box(box, self.jitter_shift, self.jitter_scale)
-        box = expand_box(box, self.margin)
-        crop = image.crop(to_pixels(box, *image.size))
+        crop = crop_region(image, box, self.margin)
         crop = ImageOps.pad(crop, (self.size, self.size), Image.BICUBIC, color=self.fill)
         return self.post(crop)
 

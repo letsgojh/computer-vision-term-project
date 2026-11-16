@@ -22,6 +22,7 @@ locate:
   min_area_frac: 0.002
   max_area_frac: 0.8
   warn_rate_diff: 0.10
+  warn_rel_diff: 0.25
 
 # 크롭: 박스 여유와 학습용 jitter
 crop:
