@@ -27,12 +27,14 @@ uv pip install -r src/models/model2_memo/requirements.txt
 # 1. 합성 데이터 (정답 박스 memo_boxes.csv 포함, 탐지기 불필요)
 python -m src.models.model2_memo.scripts.make_smoke_data outputs/model2_smoke_data
 # 2. 학습
-python -m src.models.model2_memo.train --config configs/model2_smoke.yaml --device cuda
+python -m src.models.model2_memo.train --config configs/model2_smoke.yaml
 # 3. 평가
-python -m src.models.model2_memo.evaluate --config configs/model2_smoke.yaml --checkpoint outputs/model2_smoke/checkpoints/best_model.pth --device cuda
+python -m src.models.model2_memo.evaluate --config configs/model2_smoke.yaml --checkpoint outputs/model2_smoke/checkpoints/best_model.pth
 # 4. 비교 (여기서는 같은 파일을 두 번 넣어 명령이 도는지만 확인)
 python -m src.models.model2_memo.compare --model1 outputs/model2_smoke/predictions/test_predictions.csv --model2 outputs/model2_smoke/predictions/test_predictions.csv --out outputs/model2_smoke/comparison
 ```
+
+`--device`를 생략하면 `auto`(CUDA가 있으면 CUDA)입니다. CPU/Mac은 `--device cpu`/`mps`를 붙입니다.
 
 다시 실행하려면 `outputs/model2_smoke`를 먼저 지웁니다(학습은 기존 체크포인트를 덮어쓰지 않고 멈춥니다).
 
@@ -46,7 +48,7 @@ PR #2의 `src/preprocess/split.py export`가 만드는 CSV(데이터 규약 3-5)
 |---|---|---|
 | 학습 (`data.metadata`) | `data/splits/model1_metadata.csv` | `python -m src.preprocess.split export` (기본, original만. 모델 1과 같은 파일) |
 | 평가 (후처리 포함) | `data/splits/model1_metadata_eval.csv` | `split.py export --variants original kakao resize --out data/splits/model1_metadata_eval.csv` |
-| 재촬영 평가 | `data/splits/model1_recapture.csv` | 별도 export (`--skip-missing`) |
+| 재촬영 평가 | `data/splits/model1_recapture.csv` | `python -m src.preprocess.split export --variants recapture --skip-missing --out data/splits/model1_recapture.csv` |
 
 ### 실행 순서
 
@@ -70,11 +72,13 @@ python -m src.models.model2_memo.evaluate --config configs/model2_memo.yaml --ch
 python -m src.models.model2_memo.compare --model1 <모델 1 test_predictions.csv> --model2 outputs/model2/predictions/test_predictions.csv
 ```
 
+모델 1의 평가 명령에는 `--metadata` 옵션이 없습니다. kakao/resize 행으로 비교하려면 모델 1을 `data.metadata`가 평가 CSV인 설정으로 평가해야 하며, 그렇지 않으면 `compare`에서 그 행들이 `missing_in_model1`로 나옵니다.
+
 평가 CSV에 박스 캐시가 없는 이미지가 있으면 `evaluate`가 `locate --metadata` 안내와 함께 멈춥니다. `--device`는 모든 명령에서 `auto|cuda|mps|cpu`를 받습니다.
 
 ## 메모 위치 찾기와 수동 박스
 
-우선순위는 **수동 박스(train만) > 자동 탐지 > 대체(전체 이미지)** 입니다. 탐지는 후처리 버전마다 그 이미지 자체에서 따로 합니다. 이미 캐시에 있는 `image_path`는 건너뛰고, `--overwrite`를 주면 다시 탐지합니다.
+우선순위는 **수동 박스(train만) > 자동 탐지 > 대체(전체 이미지)** 입니다. 탐지는 후처리 버전마다 그 이미지 자체에서 따로 합니다. 캐시의 자동/대체 박스는 **탐지 설정 지문**(`모델ID#해시`: 모델, `queries`, 임계값, 면적 범위)이 지금 설정과 같을 때만 재사용하고, 다르면 자동으로 다시 탐지합니다(재사용/재탐지 개수를 출력). `--overwrite`를 주면 모두 다시 탐지합니다. 진행률을 tqdm으로 보여 주고, 새 탐지 200개마다(예외·Ctrl-C 때도) 캐시를 중간 저장하므로 중단해도 이어서 돌릴 수 있습니다. 수동 박스 중 CSV의 어떤 이미지와도 맞지 않는 것이 있으면 경고합니다.
 
 수동 박스 파일은 `metadata/memo_boxes_manual.csv`입니다.
 
@@ -87,7 +91,11 @@ stem,postprocess,x0,y0,x1,y1,note
 - 그 stem에만 적용됩니다. 진짜 사진의 박스를 같은 원본에서 나온 A·B에 옮겨 쓰지 않습니다.
 - **train에만 적용됩니다**(`locate.manual_splits: [train]`). val/test까지 사람이 박스를 그려 주면 평가 결과가 실전 성능이 아니라 "사람이 메모를 찾아 준 경우"의 성능이 됩니다. val은 임계값을 정하므로 test와 조건이 같아야 합니다.
 
-`locate_report.csv`는 `split × fake_type × postprocess`별 auto/manual/fallback 비율입니다. 같은 split·postprocess에서 진짜와 어떤 가짜 유형의 fallback 비율 또는 manual 비율이 10%p 넘게 다르면 경고를 출력합니다. 실패나 사람 손이 한쪽 라벨에만 몰리면 모델이 조작 흔적 대신 크롭 방식 차이를 배우기 때문입니다.
+`locate_report_<메타데이터 파일 이름>.csv`는 `split × fake_type × postprocess`별 auto/manual/fallback 비율과 정답 없이 볼 수 있는 박스 품질 지표입니다.
+
+- `auto_mean_score`: 자동 탐지 행의 평균 점수, `median_area_frac`: 박스 면적 비율 중앙값, `median_crop_short_px`: 크롭 짧은 변(픽셀) 중앙값
+- 같은 split·postprocess에서 진짜와 어떤 가짜 유형을 비교해, fallback/manual 비율과 `auto_mean_score`가 10%p(`locate.warn_rate_diff`) 넘게, `median_area_frac`/`median_crop_short_px`가 상대 25%(`locate.warn_rel_diff`) 넘게 다르면 경고를 출력합니다. 실패나 사람 손, 크롭 크기가 한쪽 라벨에만 몰리면 모델이 조작 흔적 대신 크롭 방식 차이를 배우기 때문입니다.
+- `--dump-crops N`을 주면 그룹마다 앞 N장의 평가용 크롭(긴 변 512px 이하)을 `<boxes_csv 폴더>/crop_samples/<split>_<fake_type>_<postprocess>/`에 저장합니다. 눈으로 확인할 때 쓰세요.
 
 ## 출력 위치
 
@@ -96,7 +104,8 @@ stem,postprocess,x0,y0,x1,y1,note
 | 경로 | 내용 |
 |---|---|
 | `outputs/model2/memo_boxes.csv` | 박스 캐시 (`image_path, x0..y1, score, source, detector`) |
-| `outputs/model2/locate_report.csv` | 탐지 출처 비율 리포트 |
+| `outputs/model2/locate_report_<CSV 이름>.csv` | 탐지 출처 비율과 박스 품질 리포트 |
+| `outputs/model2/crop_samples/` | `--dump-crops` 크롭 샘플 |
 | `outputs/model2/checkpoints/` | `best_model.pth`, `last_model.pth` |
 | `outputs/model2/logs/` | 학습 로그 |
 | `outputs/model2/predictions/` | `test_predictions.csv` (모델 1 형식 + `postprocess, box_source`), 지표 json/csv |
@@ -107,8 +116,12 @@ smoke 실행은 같은 구조가 `outputs/model2_smoke/`, 합성 데이터는 `o
 ## 주의사항
 
 - **예측 파일 형식은 Issue #3 결정을 기다리는 중입니다.** 지금은 모델 1 형식에 `postprocess, box_source`를 더한 형식이며, 결정되면 맞춥니다.
-- **실제 사진이 들어오면 20장 정도로 먼저** 탐지 쿼리(`locate.queries`)와 임계값(`box_threshold`, `text_threshold`, `min/max_area_frac`)을 조정하세요. 기본값은 합성 데이터 기준 초기값입니다.
-- **유형별로 크롭 샘플을 눈으로 확인하세요.** fallback 비율이 유형 간에 같아도, 탐지가 맞는 정도는 유형별로 다를 수 있습니다(합성 데이터에서 실제로 관찰됨). `locate_report`만으로는 라벨과 엮인 크롭 차이를 놓칠 수 있습니다. real/A/B/C별로 크롭 이미지를 몇 장씩 열어 보세요.
+- **실제 사진이 들어오면 20장 정도로 먼저** 탐지 설정을 조정하세요. 기본값은 합성 데이터 기준 초기값입니다.
+  1. 유형별로 섞어 20장 정도의 부분 CSV(`subset.csv`)를 만듭니다.
+  2. `python -m src.models.model2_memo.locate --metadata subset.csv --dump-crops 20`
+  3. `crop_samples/`의 크롭을 눈으로 보고 `locate_report_subset.csv`와 경고를 확인합니다.
+  4. `locate.queries`, `box_threshold`, `text_threshold`, `min/max_area_frac`를 고치고 다시 실행합니다. 지문이 바뀌므로 오래된 박스는 자동으로 다시 탐지됩니다.
+- **유형별로 크롭 샘플을 눈으로 확인하세요.** fallback 비율이 유형 간에 같아도, 탐지가 맞는 정도는 유형별로 다를 수 있습니다(합성 데이터에서 실제로 관찰됨). 리포트의 박스 품질 지표와 경고, `--dump-crops`가 이를 돕지만 정답이 없어 눈 확인을 대신하지는 못합니다. real/A/B/C별로 몇 장씩 열어 보세요.
 - test는 epoch 선택이나 임계값 조정에 쓰지 않습니다. 임계값은 val에서 정해 체크포인트에 고정됩니다.
 - 진짜와 가짜를 서로 다른 방법으로 크롭하거나, 추론 시 마스크·`fake_type` 같은 정답 정보로 위치를 찾지 마세요.
 

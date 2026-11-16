@@ -74,9 +74,10 @@
   - **수동 박스는 설정 `locate.manual_splits`(기본 `[train]`)에 있는 split의 행에만 적용합니다.** val과 test는 실전과 같게 자동 탐지와 대체만 씁니다. val은 임계값을 정하는 곳이라 test와 조건이 같아야 하기 때문입니다. (구현자 판단으로 정한 값)
   - **수동 박스는 그 stem에만 적용합니다.** 진짜 사진의 수동 박스를 같은 원본에서 나온 A·B에 옮겨 쓰지 않습니다. 옮기려면 원본 대응표가 필요하기 때문입니다. (구현자 판단으로 정한 값)
 - **대체:** 탐지에 실패하면 박스를 전체 이미지 `(0, 0, 1, 1)`로 두고 출처를 `fallback`으로 기록합니다.
-- **결과 캐시:** `outputs/model2/memo_boxes.csv` (Git 제외, 다시 만들 수 있음). 컬럼은 `image_path, x0, y0, x1, y1, score, source(auto|manual|fallback), detector`입니다. 이미 있는 `image_path`는 건너뛰고, `--overwrite`일 때만 다시 탐지합니다.
-- **리포트:** `split × fake_type × postprocess`별로 auto/manual/fallback 비율을 `outputs/model2/locate_report.csv`에 저장합니다.
-  - 같은 split·postprocess 안에서 진짜와 어떤 가짜 유형의 **fallback 비율 또는 manual 비율** 차이가 10%p를 넘으면 경고를 출력합니다.
+- **결과 캐시:** `outputs/model2/memo_boxes.csv` (Git 제외, 다시 만들 수 있음). 컬럼은 `image_path, x0, y0, x1, y1, score, source(auto|manual|fallback), detector`입니다. `detector` 열에는 모델 ID와 탐지 설정(질의, 임계값, 면적 범위) 해시를 합친 **지문**(`모델ID#해시8자`)을 기록합니다. 캐시의 자동/대체 박스는 지문이 현재 설정과 같을 때만 재사용하고, 다르면 다시 탐지합니다(`--overwrite`면 모두 다시 탐지). 진행률(tqdm)을 보여 주고 새 탐지 200개마다, 그리고 예외·Ctrl-C 때 캐시를 중간 저장합니다.
+- **리포트:** `split × fake_type × postprocess`별로 auto/manual/fallback 비율과 박스 품질 열(`auto_mean_score`, `median_area_frac`, `median_crop_short_px`)을 `outputs/model2/locate_report_<메타데이터 CSV 이름>.csv`에 저장합니다.
+  - 같은 split·postprocess 안에서 진짜와 어떤 가짜 유형의 **fallback 비율, manual 비율, `auto_mean_score`** 차이가 10%p를 넘거나, `median_area_frac`·`median_crop_short_px`의 상대 차이가 25%를 넘으면 경고를 출력합니다. 정답 없이도 라벨과 엮인 크롭 품질 차이를 잡기 위해서입니다.
+  - `--dump-crops N`: 그룹마다 앞 N장의 평가용 크롭(긴 변 512px 이하)을 `crop_samples/`에 저장해 눈으로 확인하게 합니다. 수동 박스가 어떤 이미지와도 맞지 않으면 경고합니다.
   - 실패나 사람 손이 가짜(또는 진짜)에만 몰리면, 크롭 방식 차이가 라벨과 엮여 지름길이 되기 때문입니다.
 - **명령 옵션:** `--metadata`로 설정의 CSV 대신 다른 CSV(예: 평가용 후처리 버전 CSV)를 지정할 수 있습니다. 결과는 같은 `boxes_csv` 캐시에 `image_path` 기준으로 추가됩니다.
 
@@ -100,10 +101,11 @@
 - **학습 (모델 1과 같은 방식):**
   - AdamW(lr 1e-4, wd 0.01), CosineAnnealing, `BCEWithLogitsLoss`, 최대 20 epoch, patience 5, batch 16
   - CUDA에서만 AMP를 쓰고, 장치는 `auto`(CUDA → MPS → CPU)로 고릅니다.
-  - **val F1이 가장 좋은 epoch**를 `best_model.pth`로 저장하고, 그 epoch에서 **val F1을 최대로 하는 임계값**을 체크포인트에 고정합니다. `last_model.pth`도 저장합니다.
+  - **val F1이 가장 좋은 epoch**를 `best_model.pth`로 저장하고, 그 epoch에서 **val F1을 최대로 하는 임계값**을 체크포인트에 고정합니다. 임계값 규칙은 모델 1과 같습니다: 후보는 PR 곡선 임계값과 0.5이고, 최대 F1(오차 1e-12) 동점이면 0.5에 가까운 값(그다음 작은 값)을 고릅니다. 체크포인트에는 `protected_ids`(학습·val에 쓴 `source_id`, 비어 있지 않은 `item_id` 목록)도 저장합니다. `last_model.pth`도 저장합니다.
   - 학습 단계에서는 test를 읽지 않습니다.
   - 출력은 `outputs/model2/{checkpoints,logs,predictions}`이고, 이미 체크포인트가 있으면 덮어쓰지 않고 멈춥니다.
 - **평가:**
+  - **held-out 확인:** test 행의 `source_id`나 비어 있지 않은 `item_id`가 체크포인트의 `protected_ids`에 있으면 `leak` 오류로 멈춥니다(`protected_ids`가 없는 체크포인트는 경고만 출력).
   - 체크포인트에 고정된 임계값으로 test split 전체(B 포함, CSV에 있는 모든 후처리 버전)를 예측합니다.
   - 기본 저장 위치는 `outputs/model2/predictions/test_predictions.csv`입니다. `--output-dir`로 바꿀 수 있어서, recapture 평가가 기본 평가 결과를 덮어쓰지 않게 할 수 있습니다.
   - 컬럼은 모델 1 형식에 두 개를 더한 것입니다: `image_path, label, fake_type, fake_probability, prediction, source_id, domain, postprocess, box_source`
