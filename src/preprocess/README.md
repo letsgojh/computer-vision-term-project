@@ -57,5 +57,7 @@ python -m src.preprocess.postprocess --data-root /tmp/cvtp_dummy/data run
 python -m src.preprocess.split --real-metadata /tmp/cvtp_dummy/metadata/real_metadata.csv \
     --fake-mapping /tmp/cvtp_dummy/metadata/fake_mapping.csv \
     --split-csv /tmp/cvtp_dummy/data/splits/split.csv build
-python -m pytest            # 테스트
+python -m pytest tests/test_preprocess.py   # 후처리·split 테스트 (torch 없이 실행됨)
 ```
+
+`python -m pytest`만 치면 `tests/` 아래 모델 1·2 테스트까지 모으는데, 그 테스트들은 torch가 필요해서 torch가 없으면 모으는 단계에서 멈춥니다. 후처리만 확인할 때는 위처럼 파일을 지정하세요.
