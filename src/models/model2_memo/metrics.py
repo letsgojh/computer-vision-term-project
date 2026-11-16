@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import (accuracy_score, f1_score, precision_score,
-                             recall_score, roc_auc_score)
+from sklearn.metrics import (accuracy_score, f1_score, precision_recall_curve,
+                             precision_score, recall_score, roc_auc_score)
 
 
 def binary_metrics(labels, probs, threshold: float) -> dict:
@@ -30,17 +30,18 @@ def binary_metrics(labels, probs, threshold: float) -> dict:
 
 
 def choose_threshold(labels, probs) -> float:
-    """고유 확률값 중 F1이 최대인 임계값을 고른다. 동점이면 큰 값."""
+    """F1이 최대인 임계값을 고른다. 후보는 PR 곡선 임계값과 0.5 (모델 1과 같은 규칙).
+
+    최대 F1(오차 1e-12) 동점이면 0.5에 가까운 값, 그다음 작은 값을 고른다.
+    """
     y = np.asarray(labels).astype(int)
     p = np.asarray(probs, dtype=float)
     if len(set(y.tolist())) < 2:
         raise ValueError("임계값을 고르려면 진짜와 가짜가 모두 필요합니다.")
-    best_t, best_f1 = None, -1.0
-    for t in np.unique(p):
-        f1 = f1_score(y, (p >= t).astype(int), zero_division=0)
-        if f1 >= best_f1:
-            best_t, best_f1 = float(t), f1
-    return best_t
+    candidates = np.append(precision_recall_curve(y, p)[2], 0.5)
+    f1 = np.array([f1_score(y, (p >= t).astype(int), zero_division=0) for t in candidates])
+    best = candidates[f1 >= f1.max() - 1e-12]
+    return float(sorted(best, key=lambda t: (abs(t - 0.5), t))[0])
 
 
 def rate_table(pred: pd.DataFrame, by: list[str]) -> pd.DataFrame:

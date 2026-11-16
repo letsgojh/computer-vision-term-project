@@ -16,8 +16,10 @@ def test_binary_metrics_single_class_auc_none():
 
 
 def test_choose_threshold_maximizes_f1():
-    assert choose_threshold([0, 0, 1, 1], [0.1, 0.3, 0.6, 0.8]) == pytest.approx(0.6)
-    assert choose_threshold([0, 0, 1, 1], [0.2, 0.7, 0.7, 0.9]) == pytest.approx(0.7)
+    # 모델 1과 같은 규칙: 최대 F1 동점이면 0.5에 가까운 값, 후보에 0.5 포함
+    assert choose_threshold([0, 0, 1, 1], [0.1, 0.3, 0.6, 0.8]) == pytest.approx(0.5)
+    assert choose_threshold([0, 0, 1, 1], [0.2, 0.7, 0.7, 0.9]) == pytest.approx(0.5)
+    assert choose_threshold([0, 0, 1, 1], [0.6, 0.7, 0.8, 0.9]) == pytest.approx(0.8)
     with pytest.raises(ValueError):
         choose_threshold([1, 1], [0.2, 0.9])
 
