@@ -457,7 +457,7 @@ def test_hf_detector_real(smoke_data):
      - val F1이 이전 최고보다 **클 때만** `best_model.pth`를 저장한다. `last_model.pth`는 매번 저장한다
      - `logs/training.csv`에 한 줄씩 쓴다: `epoch, lr, train_loss, val_loss, val_f1, val_auc, threshold`
   9. `patience` epoch 동안 개선이 없으면 멈춘다. test는 읽지 않는다
-  - 체크포인트 dict 키: `model_state, config, epoch, threshold, val_metrics, best_f1`
+  - 체크포인트 dict 키: `model_state, config, epoch, threshold, val_metrics, best_f1, protected_ids`
   - `main()`: `--config`(기본 `configs/model2_memo.yaml`), `--device {auto,cuda,mps,cpu}`. `ValueError`/`FileNotFoundError`/`FileExistsError`는 `parser.exit(1, "Error: ...")`로 처리한다
 - `configs/model2_smoke.yaml`: `model2_memo.yaml`과 같은 키에서 다음만 바꾼다
   - `data.metadata: outputs/model2_smoke_data/model1_metadata.csv`, `data.root: outputs/model2_smoke_data`
