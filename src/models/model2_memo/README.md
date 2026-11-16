@@ -97,6 +97,19 @@ stem,postprocess,x0,y0,x1,y1,note
 - 같은 split·postprocess에서 진짜와 어떤 가짜 유형을 비교해, fallback/manual 비율과 `auto_mean_score`가 10%p(`locate.warn_rate_diff`) 넘게, `median_area_frac`/`median_crop_short_px`가 상대 25%(`locate.warn_rel_diff`) 넘게 다르면 경고를 출력합니다. 실패나 사람 손, 크롭 크기가 한쪽 라벨에만 몰리면 모델이 조작 흔적 대신 크롭 방식 차이를 배우기 때문입니다.
 - `--dump-crops N`을 주면 그룹마다 앞 N장의 평가용 크롭(긴 변 512px 이하)을 `<boxes_csv 폴더>/crop_samples/<split>_<fake_type>_<postprocess>/`에 저장합니다. 눈으로 확인할 때 쓰세요.
 
+## Grad-CAM으로 모델이 어디를 보는지 확인
+
+```bash
+python -m src.models.model2_memo.explain --config configs/model2.yaml \
+  --checkpoint outputs/model2/checkpoints/best_model.pth --per-group 4
+```
+
+- test split에서 (`fake_type`, `postprocess`) 그룹마다 앞 `--per-group`장(CSV 순서)을 골라 패널 PNG를 만듭니다. `--split`, `--metadata`, `--output-dir`, `--device`도 쓸 수 있습니다.
+- 출력은 `outputs/model2/gradcam/<fake_type>_<postprocess>/<파일명>.png`, 목록 `gradcam_index.csv`(`image_path, fake_type, postprocess, box_source, fake_probability, prediction, png`), 안내 `README.txt`입니다.
+- 패널은 왼쪽부터 박스를 그린 전체 이미지, 메모 크롭, 크롭 위에 Grad-CAM(파랑 약함 → 빨강 강함)을 겹친 그림입니다.
+- 읽는 법: 열이 글씨 획 위에 있으면 자연스럽습니다. 종이 가장자리, 레터박스 여백, 배경에 몰리면 지름길(shortcut)을 의심하고 크롭과 박스를 다시 확인하세요.
+- 주의: 강조 영역은 이 모델의 가짜 점수가 반응한 위치일 뿐 조작된 영역의 증거가 아니며, 세기는 이미지마다 최댓값 기준의 상대값입니다.
+
 ## 출력 위치
 
 `outputs/`는 Git에서 제외됩니다(커밋 금지).
@@ -109,6 +122,7 @@ stem,postprocess,x0,y0,x1,y1,note
 | `outputs/model2/checkpoints/` | `best_model.pth`, `last_model.pth` |
 | `outputs/model2/logs/` | 학습 로그 |
 | `outputs/model2/predictions/` | `test_predictions.csv` (모델 1 형식 + `postprocess, box_source`), 지표 json/csv |
+| `outputs/model2/gradcam/` | Grad-CAM 패널 PNG, `gradcam_index.csv`, `README.txt` |
 | `outputs/model2/comparison/` | 모델 1 vs 모델 2 비교표 (csv, md) |
 
 smoke 실행은 같은 구조가 `outputs/model2_smoke/`, 합성 데이터는 `outputs/model2_smoke_data/`에 생깁니다.

@@ -111,6 +111,7 @@
   - 컬럼은 모델 1 형식에 두 개를 더한 것입니다: `image_path, label, fake_type, fake_probability, prediction, source_id, domain, postprocess, box_source`
   - 지표(accuracy, precision, recall, F1, ROC-AUC)는 전체, `fake_type`별, `postprocess`별로 계산해 json/csv로 저장합니다.
   - 예측 파일 형식은 #3에서 논의 중입니다. 지금은 모델 1 형식을 따르고, 결정되면 맞춥니다.
+- **설명 (`explain.py`):** `backbone.conv_head`에서 가짜 로짓에 대한 Grad-CAM을 계산하고, 레터박스 여백을 걷어 낸 뒤 크롭 위에 겹쳐 [전체+박스 | 크롭 | 크롭+CAM] 패널 PNG와 `gradcam_index.csv`로 저장합니다. 모델 1의 방식을 따르되 코드는 공유하지 않습니다. 열은 모델이 반응한 위치일 뿐 조작 영역의 증거가 아니고, 종이 가장자리·여백에 몰리면 지름길 신호로 봅니다.
 
 ### 4-5. 비교표 (`compare.py`)
 - 모델 1과 모델 2의 `test_predictions.csv`를 `image_path`로 합칩니다. 두 파일에 모두 있는 행만 쓰고, 빠진 행 수를 출력합니다.
