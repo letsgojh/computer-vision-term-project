@@ -1,0 +1,13 @@
+# torch는 CUDA 빌드로 먼저 설치한다:
+# pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0 torchvision==0.26.0
+# 검증한 버전: torch 2.11.0+cu128, torchvision 0.26.0, timm 1.0.31, transformers 5.23.0,
+# pandas 3.1.1, Pillow 13.0.0, scikit-learn (설치본)
+numpy
+pandas
+pillow
+pyyaml
+tqdm
+scikit-learn
+timm
+transformers>=5.0  # Grounding DINO post_process_grounded_object_detection(threshold=...)
+pytest
