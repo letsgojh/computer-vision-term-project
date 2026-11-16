@@ -24,6 +24,19 @@ def _records(table: pd.DataFrame) -> list[dict]:
             for r in table.to_dict("records")]
 
 
+def _check_no_overlap(test_df: pd.DataFrame, protected: dict | None) -> None:
+    """test가 학습·val에 쓴 source_id/item_id와 겹치면 ValueError (체크포인트에 저장된 값 기준)."""
+    if protected is None:
+        print("경고: 체크포인트에 protected_ids가 없어 학습 데이터와의 겹침을 확인하지 못했습니다.")
+        return
+    bad_src = sorted(set(test_df["source_id"]) & set(protected["source_id"]))
+    items = test_df["item_id"].str.strip() if "item_id" in test_df else pd.Series([], dtype=str)
+    bad_item = sorted(set(items[items != ""]) & set(protected["item_id"]))
+    if bad_src or bad_item:
+        raise ValueError("학습·val과 test가 겹치는 leak: "
+                         f"source_id {bad_src[:3]}, item_id {bad_item[:3]}")
+
+
 def evaluate(checkpoint_path, config_path: str | None = None, metadata: str | None = None,
              output_dir: str | None = None, device_name: str | None = None) -> dict:
     """test split 전체를 평가하고 예측 CSV와 지표 파일을 쓴다. 지표 dict를 돌려준다."""
@@ -47,7 +60,9 @@ def evaluate(checkpoint_path, config_path: str | None = None, metadata: str | No
     test_df = select_rows(df, "test")
     n_manual = sum(boxes[p]["source"] == "manual" for p in test_df["image_path"] if p in boxes)
     if n_manual:
-        print(f"경고: test 행 {n_manual}개가 수동 박스를 씁니다 (평가 박스와 달라질 수 있음).")
+        print(f"경고: test 행 {n_manual}개가 수동 박스를 씁니다. 실전 성능이 아닙니다"
+              "(합성 데이터 정답 박스가 아니라면 반목표 위반).")
+    _check_no_overlap(test_df, ckpt.get("protected_ids"))
 
     model = build_model(cfg["model"], pretrained=False)
     model.load_state_dict(ckpt["model_state"])
@@ -99,7 +114,9 @@ def main() -> None:
     try:
         report = evaluate(args.checkpoint, args.config, args.metadata, args.output_dir,
                           args.device)
-    except (ValueError, FileNotFoundError) as exc:
+    except torch.cuda.OutOfMemoryError:
+        parser.exit(1, "Error: CUDA 메모리 부족: training.batch_size를 줄이세요\n")
+    except (ValueError, FileNotFoundError, RuntimeError, OSError) as exc:
         parser.exit(1, f"Error: {exc}\n")
     o = report["overall"]
     print(f"완료: n={o['n']} f1={o['f1']:.4f} acc={o['accuracy']:.4f} "

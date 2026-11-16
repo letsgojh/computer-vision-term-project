@@ -6,6 +6,7 @@ import csv
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 import yaml
 from torch import nn
@@ -22,7 +23,6 @@ LOG_FIELDS = ["epoch", "lr", "train_loss", "val_loss", "val_f1", "val_auc", "thr
 
 def _summary(train_df, val_df, boxes):
     """split, fake_type, postprocess, box_source별 개수 표."""
-    import pandas as pd
     parts = []
     for name, df in (("train", train_df), ("val", val_df)):
         d = df[["fake_type", "postprocess"]].copy()
@@ -83,7 +83,13 @@ def train(config_path: str | Path, device_name: str | None = None) -> Path:
     _summary(train_df, val_df, boxes).to_csv(out / "data_summary.csv", index=False)
     n_manual = sum(boxes[p]["source"] == "manual" for p in val_df["image_path"])
     if n_manual:
-        print(f"경고: val 행 {n_manual}개가 수동 박스를 씁니다 (평가 박스와 달라질 수 있음).")
+        print(f"경고: val 행 {n_manual}개가 수동 박스를 씁니다. 실전 성능이 아닙니다"
+              "(합성 데이터 정답 박스가 아니라면 반목표 위반).")
+
+    used = pd.concat([train_df, val_df])
+    items = used["item_id"].str.strip() if "item_id" in used else pd.Series([], dtype=str)
+    protected = {"source_id": sorted(set(used["source_id"])),
+                 "item_id": sorted(set(items[items != ""]))}
 
     train_loader = DataLoader(
         train_ds, batch_size=bs, shuffle=True, generator=gen, num_workers=tc["num_workers"],
@@ -131,7 +137,8 @@ def train(config_path: str | Path, device_name: str | None = None) -> Path:
             improved = vm["f1"] > best_f1
             best_f1 = max(best_f1, vm["f1"])
             ckpt = {"model_state": model.state_dict(), "config": cfg, "epoch": epoch,
-                    "threshold": thr, "val_metrics": vm, "best_f1": best_f1}
+                    "threshold": thr, "val_metrics": vm, "best_f1": best_f1,
+                    "protected_ids": protected}
             torch.save(ckpt, ckpt_dir / "last_model.pth")
             if improved:
                 torch.save(ckpt, ckpt_dir / "best_model.pth")
@@ -150,7 +157,9 @@ def main() -> None:
     args = parser.parse_args()
     try:
         out = train(args.config, args.device)
-    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+    except torch.cuda.OutOfMemoryError:
+        parser.exit(1, "Error: CUDA 메모리 부족: training.batch_size를 줄이세요\n")
+    except (ValueError, FileNotFoundError, FileExistsError, RuntimeError, OSError) as exc:
         parser.exit(1, f"Error: {exc}\n")
     print(f"완료: {out}")
 

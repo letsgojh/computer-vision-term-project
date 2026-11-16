@@ -20,7 +20,8 @@ def test_train_end_to_end(tmp_path, smoke_data):
     assert 1 <= len(pd.read_csv(out / "logs/training.csv")) <= 2
     ckpt = torch.load(out / "checkpoints/best_model.pth", weights_only=False)
     assert 0.0 <= ckpt["threshold"] <= 1.0 and ckpt["config"]["model"]["input_size"] == 64
-    assert {"model_state", "epoch", "val_metrics", "best_f1"} <= set(ckpt)
+    assert {"model_state", "epoch", "val_metrics", "best_f1", "protected_ids"} <= set(ckpt)
+    assert ckpt["protected_ids"]["source_id"] == sorted(set(ckpt["protected_ids"]["source_id"]))
     summary = pd.read_csv(out / "data_summary.csv", keep_default_na=False)
     assert "B" not in set(summary.fake_type) and set(summary.postprocess) == {"original"}
     assert set(summary.split) == {"train", "val"}

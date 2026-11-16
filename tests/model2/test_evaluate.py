@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from src.models.model2_memo.evaluate import PREDICTION_COLUMNS, evaluate
 
@@ -37,3 +38,18 @@ def test_evaluate_metadata_override(tmp_path, smoke_data, trained_model):
     evaluate(out / "checkpoints/best_model.pth", cfg, metadata=str(csv), output_dir=tmp_path / "p3")
     df = pd.read_csv(tmp_path / "p3/test_predictions.csv", keep_default_na=False)
     assert len(df) == len(sub) and set(df.postprocess) == {"original"}
+
+
+def test_evaluate_refuses_overlap_with_training(tmp_path, smoke_data, trained_model):
+    cfg, out = trained_model
+    src = pd.read_csv(smoke_data, keep_default_na=False)
+    tr = src[(src.split == "train") & (src.fake_type == "real") & (src.postprocess == "original")]
+    sid = tr.source_id.iloc[0]
+    src = src[~((src.split == "train") & (src.source_id == sid))]
+    t = src.index[src.split == "test"][0]
+    src.loc[t, "source_id"] = sid
+    csv = tmp_path / "overlap.csv"
+    src.to_csv(csv, index=False)
+    with pytest.raises(ValueError, match="leak"):
+        evaluate(out / "checkpoints/best_model.pth", cfg, metadata=str(csv),
+                 output_dir=tmp_path / "p4")
