@@ -267,6 +267,16 @@ def dump_crop_samples(df: pd.DataFrame, boxes: dict[str, BoxRecord], out_dir: Pa
     return saved
 
 
+def _warn_unmatched_manual(manual: dict[tuple[str, str], Box], df: pd.DataFrame) -> None:
+    """CSV의 어떤 행과도 맞지 않는 수동 박스 키가 있으면 경고한다."""
+    seen = {(Path(p).stem, pp) for p, pp in zip(df.image_path, df.postprocess)}
+    shared = {stem for stem, pp in seen if pp in _SHARED_PP}
+    unmatched = [k for k in manual if not (k[0] in shared if k[1] == "" else k in seen)]
+    if unmatched:
+        print(f"경고: 수동 박스 {len(unmatched)}개가 CSV의 어떤 이미지와도 맞지 않습니다 "
+              f"(예: {', '.join(k[0] for k in unmatched[:3])})")
+
+
 def run(config_path, metadata: str | None = None, overwrite: bool = False,
         device: str | None = None, detector: Detector | None = None,
         dump_crops: int = 0) -> pd.DataFrame:
@@ -280,6 +290,7 @@ def run(config_path, metadata: str | None = None, overwrite: bool = False,
     boxes_csv = Path(loc["boxes_csv"])
     cache = read_boxes(boxes_csv)
     manual = read_manual_boxes(loc["manual_csv"])
+    _warn_unmatched_manual(manual, df)
 
     def get_detector() -> Detector:
         if detector is not None:
@@ -333,7 +344,7 @@ def main() -> None:
     try:
         run(args.config, metadata=args.metadata, overwrite=args.overwrite, device=args.device,
             dump_crops=args.dump_crops)
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, FileNotFoundError, RuntimeError, OSError) as exc:
         parser.exit(1, f"Error: {exc}\n")
 
 

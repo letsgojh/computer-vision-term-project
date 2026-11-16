@@ -239,6 +239,20 @@ def test_run_writes_cache_and_report(tmp_path, smoke_data):
     assert isinstance(table, pd.DataFrame) and len(table) > 0
 
 
+def test_run_warns_on_unmatched_manual_stems(tmp_path, smoke_data, capsys):
+    df = _rows(_frame(smoke_data))
+    stem = df.stem.iloc[0]
+    man = tmp_path / "manual.csv"
+    man.write_text("stem,postprocess,x0,y0,x1,y1\n"
+                   f"{stem},,0.1,0.1,0.3,0.3\nnope1,,0.1,0.1,0.3,0.3\n"
+                   f"{stem},recapture,0.1,0.1,0.3,0.3\nnope2,kakao,0.1,0.1,0.3,0.3\n",
+                   encoding="utf-8")
+    run(_run_cfg(tmp_path, smoke_data, manual=man), detector=StemDetector())
+    out = capsys.readouterr().out
+    assert "수동 박스 3개가 CSV의 어떤 이미지와도 맞지 않습니다" in out
+    assert "nope1" in out and "nope2" in out and f"({stem}" not in out.split("예:")[1]
+
+
 def test_locate_report_quality_columns_and_warnings():
     df = _report_frame([("real", 4), ("A", 4)])
     boxes = {}
