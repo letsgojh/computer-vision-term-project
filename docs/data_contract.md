@@ -20,7 +20,8 @@
 
 - 닉네임·물건 이름은 **영문 소문자 + 숫자**만 씁니다. 공백, 한글, 하이픈(`-`)은 쓰지 않습니다.
 - 물건 이름 목록은 `metadata/objects.csv`에 등록된 이름만 씁니다.
-- 진짜 사진은 **원본 그대로** 올립니다. 카카오톡으로 전송하면 재압축되므로 금지합니다.
+- 진짜 사진은 **원본 그대로, JPG로** 올립니다. 카카오톡으로 전송하면 재압축되므로 금지합니다. 아이폰은 설정 → 카메라 → 포맷 → 높은 호환성으로 바꿔야 JPG로 찍힙니다.
+- 촬영자와 물건은 파일명에서 읽습니다. 파일명이 규칙과 다르면 메타데이터를 만들 수 없습니다.
 
 ## 2. 폴더 구조 (`data/`)
 
@@ -51,20 +52,30 @@ data/
 
 ## 3. CSV 형식
 
-### 3-1. `metadata/real_metadata.csv` — 진짜 사진 메타데이터 (전원 작성)
+### 3-1. `metadata/real_metadata.csv` — 진짜 사진 메타데이터 (자동 생성)
+
+촬영자가 따로 쓰지 않습니다. 후처리 담당이 `python -m src.preprocess.metadata`로 파일명과 사진의 EXIF에서 만듭니다. 펜·종이·조명·배경 같은 촬영 조건은 기록하지 않기로 했습니다 (이슈 #5).
+
+| 컬럼 | 설명 | 출처 | 예시 |
+|---|---|---|---|
+| `filename` | 파일명 | 파일 | `jaehwan_mouse_001.jpg` |
+| `photographer` | 촬영자 닉네임 | 파일명 | `jaehwan` |
+| `object` | 물건 | 파일명 | `mouse` |
+| `phone_model` | 촬영 기기 | EXIF | `iPhone 15` |
+| `width`, `height` | 해상도(px), 회전 반영 | 이미지·EXIF | `3024`, `4032` |
+| `taken_at` | 촬영 시각 | EXIF | `2026-11-17 14:03:21` |
+
+- 파일명 규칙 위반, JPG가 아닌 파일, `objects.csv`에 없는 물건이 있으면 오류 목록을 보여 주고 저장하지 않습니다.
+- EXIF가 없는 사진은 경고합니다. 카톡 전송본·스크린샷·편집본은 EXIF가 지워져 원본이 아닐 수 있습니다.
+
+### 3-1-1. `metadata/objects.csv` — 물건 목록
 
 | 컬럼 | 설명 | 예시 |
 |---|---|---|
-| `filename` | 파일명 | `jaehwan_mouse_001.jpg` |
-| `photographer` | 촬영자 닉네임 | `jaehwan` |
-| `object` | 물건 | `mouse` |
-| `memo_text` | 메모에 쓴 내용 | `2026.11.04 / 로드클` |
-| `pen` | 펜 종류 | `ballpoint` / `namepen` / `pencil` / `highlighter` |
-| `paper` | 종이 종류 | `postit` / `a4` / `notebook` / `receipt` |
-| `lighting` | 조명 | `natural` / `fluorescent` / `dark` |
-| `background` | 배경 | `desk` / `floor` / `bed` / `box` |
-| `phone_model` | 촬영 기기 | `iPhone15` |
-| `width`, `height` | 해상도(px) | `3024`, `4032` |
+| `object` | 파일명에 쓰는 영문 이름 | `smartphone` |
+| `name_ko` | 한국어 이름 | `휴대폰` |
+
+20종이 등록되어 있습니다 (이슈 #5). 이름은 가짜 C 생성 코드와 같습니다.
 
 ### 3-2. `metadata/fake_mapping.csv` — 가짜 ↔ 원본 대응표 (생성 담당)
 

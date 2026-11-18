@@ -20,6 +20,7 @@ SPLIT_CSV = SPLITS / "split.csv"
 
 METADATA = ROOT / "metadata"
 REAL_METADATA_CSV = METADATA / "real_metadata.csv"
+OBJECTS_CSV = METADATA / "objects.csv"
 FAKE_MAPPING_CSV = METADATA / "fake_mapping.csv"
 
 OUTPUTS = ROOT / "outputs"

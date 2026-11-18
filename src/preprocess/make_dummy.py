@@ -7,24 +7,21 @@
 
 import argparse
 import csv
-import random
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from src.common.schema import FAKE_MAPPING_COLUMNS, REAL_METADATA_COLUMNS, fake_ab_name, fake_c_name, mask_name
+from src.common.schema import FAKE_MAPPING_COLUMNS, fake_ab_name, fake_c_name, mask_name
+from src.preprocess import metadata
 
+# 물건 이름은 metadata/objects.csv의 20종에서 고른다
 PHOTOGRAPHERS = {
-    "jaehwan": ["mouse", "cup", "wallet"],
-    "taei": ["keyboard", "earphone", "watch"],
-    "dongsu": ["book", "bag", "charger"],
-    "minji": ["tumbler", "glasses", "speaker"],
+    "jaehwan": ["mouse", "tumbler", "wallet"],
+    "taei": ["keyboard", "earbuds", "smartwatch"],
+    "dongsu": ["book", "backpack", "laptop"],
+    "minji": ["sneakers", "headphones", "cosmetics"],
 }
-PENS = ["ballpoint", "namepen", "pencil", "highlighter"]
-PAPERS = ["postit", "a4", "notebook", "receipt"]
-LIGHTS = ["natural", "fluorescent", "dark"]
-BACKGROUNDS = ["desk", "floor", "bed", "box"]
 
 
 def _noise_image(rng: np.random.Generator, size) -> Image.Image:
@@ -36,13 +33,12 @@ def _noise_image(rng: np.random.Generator, size) -> Image.Image:
 
 def make(root: Path, per_object: int = 4, seed: int = 0) -> None:
     rng = np.random.default_rng(seed)
-    pick = random.Random(seed).choice
     data, meta = root / "data", root / "metadata"
     for d in ["real", "fake/A", "fake/B", "fake/C", "fake/masks"]:
         (data / d).mkdir(parents=True, exist_ok=True)
     meta.mkdir(parents=True, exist_ok=True)
 
-    real_rows, fake_rows = [], []
+    fake_rows = []
     for person, objects in PHOTOGRAPHERS.items():
         for obj in objects:
             for i in range(1, per_object + 1):
@@ -51,13 +47,8 @@ def make(root: Path, per_object: int = 4, seed: int = 0) -> None:
                 img = _noise_image(rng, size)
                 exif = Image.Exif()
                 exif[0x0110] = "DummyPhone"  # Model
+                exif.get_ifd(0x8769)[0x9003] = f"2026:11:17 10:{i:02d}:00"  # DateTimeOriginal
                 img.save(data / "real" / name, "JPEG", quality=90, exif=exif)
-                real_rows.append({
-                    "filename": name, "photographer": person, "object": obj,
-                    "memo_text": f"2026.11.04 / {person}", "pen": pick(PENS), "paper": pick(PAPERS),
-                    "lighting": pick(LIGHTS), "background": pick(BACKGROUNDS),
-                    "phone_model": "DummyPhone", "width": size[0], "height": size[1],
-                })
                 # 원본마다 A·B 가짜 하나씩 (마지막 원본의 B는 3주차 보강분으로 표시)
                 for t in "AB":
                     fake = fake_ab_name(t, name, seed=i)
@@ -78,12 +69,14 @@ def make(root: Path, per_object: int = 4, seed: int = 0) -> None:
                     "model": "dummy", "created_by": "dummy", "is_reinforcement": 0,
                 })
 
-    for path, cols, rows in [(meta / "real_metadata.csv", REAL_METADATA_COLUMNS, real_rows),
-                             (meta / "fake_mapping.csv", FAKE_MAPPING_COLUMNS, fake_rows)]:
-        with open(path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=cols)
-            w.writeheader()
-            w.writerows(rows)
+    # 진짜 메타데이터는 실제와 같은 방식(파일명·EXIF 자동 생성)으로 만든다
+    real_meta, errors, _ = metadata.build(data)
+    assert not errors, errors
+    real_meta.to_csv(meta / "real_metadata.csv", index=False)
+    with open(meta / "fake_mapping.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=FAKE_MAPPING_COLUMNS)
+        w.writeheader()
+        w.writerows(fake_rows)
 
 
 def main(argv=None):

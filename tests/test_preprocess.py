@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from src.preprocess import postprocess, split
+from src.preprocess import metadata, postprocess, split
 from src.preprocess.make_dummy import make
 from src.preprocess.transforms import estimate_jpeg_quality
 
@@ -184,3 +184,37 @@ def test_export_rejects_unknown_variant(dummy):
     result, _ = split.build(rows, [0.7, 0.15, 0.15], seed=42)
     with pytest.raises(ValueError, match="후처리"):
         split.to_model1(result, ["jpeg50"])
+
+
+# ---- metadata (파일명·EXIF 자동 생성) ----
+
+def test_metadata_reads_filename_and_exif(dummy):
+    root, _ = dummy
+    meta = pd.read_csv(root / "metadata" / "real_metadata.csv", dtype=str, keep_default_na=False)
+    assert list(meta.columns) == metadata.REAL_METADATA_COLUMNS
+    row = meta.set_index("filename").loc["taei_keyboard_002.jpg"]
+    assert (row["photographer"], row["object"], row["phone_model"]) == ("taei", "keyboard", "DummyPhone")
+    assert (row["width"], row["height"], row["taken_at"]) == ("640", "480", "2026-11-17 10:02:00")
+
+
+def test_metadata_reports_bad_names_and_missing_exif(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    exif = Image.Exif()
+    exif[0x0110] = "iPhone 15"
+    exif[0x0112] = 6  # 세로로 찍어 90도 회전 정보만 붙은 사진
+    Image.new("RGB", (40, 30)).save(real / "taei_mouse_001.jpg", exif=exif)
+    Image.new("RGB", (40, 30)).save(real / "taei_mouse_002.jpg")  # 카톡 전송본처럼 EXIF 없음
+    Image.new("RGB", (40, 30)).save(real / "IMG_1234.jpg")
+    Image.new("RGB", (40, 30)).save(real / "taei_fridgee_001.jpg")
+    meta, errors, warnings = metadata.build(tmp_path, objects={"mouse", "fridge"})
+    assert list(meta["filename"]) == ["taei_mouse_001.jpg", "taei_mouse_002.jpg"]
+    assert (meta.loc[0, "width"], meta.loc[0, "height"]) == (30, 40)
+    assert len(errors) == 2 and errors[0].startswith("IMG_1234.jpg") and "objects.csv" in errors[1]
+    assert len(warnings) == 1 and warnings[0].startswith("taei_mouse_002.jpg")
+
+
+def test_objects_csv_matches_plan():
+    objects = pd.read_csv("metadata/objects.csv", dtype=str)
+    assert list(objects.columns) == ["object", "name_ko"] and len(objects) == 20
+    assert objects["object"].str.fullmatch(r"[a-z0-9]+").all() and objects["object"].is_unique

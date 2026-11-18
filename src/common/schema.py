@@ -12,10 +12,10 @@ FAKE_AB_NAME = re.compile(r"^fake(?P<type>[AB])_(?P<source>[a-z0-9]+_[a-z0-9]+_\
 FAKE_C_NAME = re.compile(r"^fakeC_(?P<object>[a-z0-9]+)_(?P<idx>\d{3})_s(?P<seed>\d+)\.png$")
 
 # CSV 컬럼
-REAL_METADATA_COLUMNS = [
-    "filename", "photographer", "object", "memo_text", "pen", "paper",
-    "lighting", "background", "phone_model", "width", "height",
-]
+# 진짜 사진 메타데이터는 사람이 쓰지 않고 파일명·EXIF로 자동 생성한다 (src/preprocess/metadata.py).
+# 촬영 조건(펜·종이·조명·배경)은 기록하지 않기로 했다 (이슈 #5).
+REAL_METADATA_COLUMNS = ["filename", "photographer", "object", "phone_model", "width", "height", "taken_at"]
+OBJECTS_COLUMNS = ["object", "name_ko"]
 FAKE_MAPPING_COLUMNS = [
     "fake_filename", "fake_type", "source_filename", "mask_filename", "object",
     "prompt", "negative_prompt", "seed", "model", "created_by", "is_reinforcement",

@@ -4,9 +4,20 @@
 
 | 입력 | 출력 |
 |---|---|
-| `data/real/`, `data/fake/`, `metadata/*.csv` | `data/processed/{original,kakao,resize,recapture}/`, `data/splits/split.csv` |
+| `data/real/`, `data/fake/`, `metadata/objects.csv`, `metadata/fake_mapping.csv` | `metadata/real_metadata.csv`, `data/processed/{original,kakao,resize,recapture}/`, `data/splits/split.csv` |
 
 설정은 [`configs/preprocess.yaml`](../../configs/preprocess.yaml)에 있습니다.
+
+## 진짜 사진 메타데이터 — `metadata.py`
+
+```bash
+python -m src.preprocess.metadata          # data/real/ → metadata/real_metadata.csv
+```
+
+- 촬영자·물건은 파일명에서, 기종·해상도·촬영 시각은 EXIF에서 읽습니다. 사람이 따로 쓰는 칸은 없습니다.
+- 파일명 규칙 위반, JPG가 아닌 파일, `metadata/objects.csv`에 없는 물건이 있으면 오류 목록을 보여 주고 저장하지 않습니다. 해당 촬영자에게 고쳐 달라고 전달하세요.
+- EXIF가 없는 사진은 경고만 합니다. 카톡 전송본이나 편집본일 수 있으니 원본인지 확인하세요.
+- 사진이 새로 올라올 때마다 다시 실행하고 CSV를 커밋합니다.
 
 ## 후처리 — `postprocess.py`
 
@@ -52,7 +63,7 @@ python -m src.preprocess.split export --variants recapture --skip-missing --out 
 ## 더미 데이터로 미리 돌려보기
 
 ```bash
-python -m src.preprocess.make_dummy /tmp/cvtp_dummy
+python -m src.preprocess.make_dummy /tmp/cvtp_dummy   # 진짜 메타데이터도 metadata.py로 같이 만듦
 python -m src.preprocess.postprocess --data-root /tmp/cvtp_dummy/data run
 python -m src.preprocess.split --real-metadata /tmp/cvtp_dummy/metadata/real_metadata.csv \
     --fake-mapping /tmp/cvtp_dummy/metadata/fake_mapping.csv \
