@@ -9,6 +9,7 @@
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import yaml
@@ -40,6 +41,28 @@ def find_sources(data_root: Path) -> dict[str, Path]:
                 raise ValueError(f"stem 중복: {p} / {sources[p.stem]}")
             sources[p.stem] = p
     return sources
+
+
+def check_real_files(data_root: Path) -> list[str]:
+    """data/real/에서 후처리가 읽지 못하고 건너뛸 파일을 찾는다. 문제가 없으면 빈 리스트.
+
+    진짜 사진은 JPG로 통일한다. 아이폰 기본값(HEIC)이나 확장자만 .jpg로 바꾼 파일을 잡아낸다.
+    """
+    problems = []
+    for p in sorted((data_root / "real").glob("*")):
+        if p.name.startswith(".") or not p.is_file():
+            continue
+        if p.suffix.lower() not in REAL_EXTS:
+            problems.append(f"{p.name}: JPG가 아님 (확장자 {p.suffix or '없음'})")
+            continue
+        try:
+            with Image.open(p) as im:
+                fmt = im.format
+        except Exception:
+            fmt = None
+        if fmt != "JPEG":
+            problems.append(f"{p.name}: 확장자는 .jpg인데 실제 형식은 {fmt or '읽을 수 없음'}")
+    return problems
 
 
 def apply_variant(img: Image.Image, variant: str, cfg: dict) -> tuple[Image.Image, int]:
@@ -114,6 +137,12 @@ def main(argv=None):
         return
     cfg = load_config(args.config)
     if args.cmd == "run":
+        problems = check_real_files(args.data_root)
+        if problems:
+            # 그냥 넘어가면 그 사진이 데이터에서 조용히 빠지므로 먼저 고치게 한다
+            print(f"data/real/에 JPG가 아닌 파일 {len(problems)}개:")
+            print("\n".join(f"  - {m}" for m in problems))
+            sys.exit("JPG로 다시 올린 뒤 실행하세요. (아이폰: 설정 → 카메라 → 포맷 → 높은 호환성)")
         for v, n in run(args.data_root, cfg, args.variants, args.overwrite).items():
             print(f"{v}: {n}장 생성")
     elif args.cmd == "recapture":

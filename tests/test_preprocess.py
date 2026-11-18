@@ -55,6 +55,19 @@ def test_postprocess_skips_existing(dummy):
     assert sum(written.values()) == 0
 
 
+def test_check_real_files_flags_non_jpg(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    Image.new("RGB", (32, 32)).save(real / "taei_mouse_001.jpg", "JPEG")
+    (real / "taei_mouse_002.heic").write_bytes(b"\x00\x00\x00\x18ftypheic")  # 아이폰 기본 형식
+    Image.new("RGB", (32, 32)).save(real / "taei_mouse_003.jpg", "PNG")  # 확장자만 .jpg
+    (real / ".DS_Store").write_bytes(b"")
+    problems = postprocess.check_real_files(tmp_path)
+    assert len(problems) == 2
+    assert problems[0].startswith("taei_mouse_002.heic") and problems[1].startswith("taei_mouse_003.jpg")
+    assert postprocess.check_real_files(tmp_path.parent / "nothing") == []
+
+
 def test_recapture_matches_by_stem(dummy, tmp_path):
     root, _ = dummy
     Image.new("RGB", (64, 64)).save(tmp_path / "jaehwan_mouse_001.jpg")
