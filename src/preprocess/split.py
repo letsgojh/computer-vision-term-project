@@ -206,7 +206,7 @@ def main(argv=None):
     p_export = sub.add_parser("export", help="모델 1 형식 CSV로 내보내기")
     p_export.add_argument("--variants", nargs="+", default=["original"], choices=POSTPROCESSES)
     p_export.add_argument("--domain", default="trade")
-    p_export.add_argument("--out", type=Path, default=paths.DATA / "splits" / "model1_metadata.csv")
+    p_export.add_argument("--out", type=Path, default=paths.SPLITS / "model1_metadata.csv")
     p_export.add_argument("--data-root", type=Path, default=paths.DATA)
     p_export.add_argument("--skip-missing", action="store_true", help="이미지가 없는 행은 빼기 (recapture용)")
     args = ap.parse_args(argv)

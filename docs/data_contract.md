@@ -43,7 +43,11 @@ data/
 
 진짜는 카메라 JPEG(EXIF 포함), 가짜는 생성기 PNG라서 그대로 학습하면 모델이 이미지 내용이 아니라 파일 형식으로 맞힐 수 있습니다. 그래서 `original`을 포함한 모든 후처리 결과는 **EXIF를 지우고 같은 방식으로 다시 저장한 JPEG**입니다. 모델 학습·평가에는 `data/real/`, `data/fake/`가 아니라 `data/processed/`만 씁니다.
 
-이미지 파일은 Git에 올리지 않습니다 (`.gitignore` 처리). 공유 드라이브에 위 구조 그대로 올리고, Git에는 CSV와 코드만 올립니다.
+이미지 파일은 Git에 올리지 않습니다 (`.gitignore` 처리). 구글 드라이브는 **사진 저장용으로만** 씁니다.
+
+- 드라이브: `data/` 아래 이미지 폴더(`real/`, `fake/`, `processed/`, `external/`)만 위 구조 그대로 둡니다. Colab에서는 공유 폴더를 "드라이브에 바로가기 추가"한 뒤 `CVTP_DATA_ROOT`를 그 안의 `data/`로 지정합니다.
+- Git: `data/splits/`의 CSV, `metadata/`, 코드. `CVTP_DATA_ROOT`를 바꿔도 CSV는 항상 레포 안의 것을 씁니다.
+- 드라이브·구글 폼 링크는 공개 레포(이슈, README, 코드)에 쓰지 않습니다.
 
 ## 3. CSV 형식
 
