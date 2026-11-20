@@ -7,14 +7,21 @@ POSTPROCESSES = ("original", "kakao", "resize", "recapture")
 SPLITS = ("train", "val", "test")
 
 # 파일명 규칙
-REAL_NAME = re.compile(r"^(?P<photographer>[a-z0-9]+)_(?P<object>[a-z0-9]+)_(?P<idx>\d{3})\.jpe?g$")
-FAKE_AB_NAME = re.compile(r"^fake(?P<type>[AB])_(?P<source>[a-z0-9]+_[a-z0-9]+_\d{3})_s(?P<seed>\d+)\.png$")
-FAKE_C_NAME = re.compile(r"^fakeC_(?P<object>[a-z0-9]+)_(?P<idx>\d{3})_s(?P<seed>\d+)\.png$")
+# 메모 없는 사진은 번호 앞에 nomemo_가 붙는다 (이슈 #5). 가짜 B는 원본 이름을 따라가서 자동으로 붙는다.
+NOMEMO = "nomemo"
+REAL_NAME = re.compile(
+    r"^(?P<photographer>[a-z0-9]+)_(?P<object>[a-z0-9]+)_(?:(?P<nomemo>nomemo)_)?(?P<idx>\d{3})\.jpe?g$"
+)
+FAKE_AB_NAME = re.compile(
+    r"^fake(?P<type>[AB])_(?P<source>[a-z0-9]+_[a-z0-9]+_(?:nomemo_)?\d{3})_s(?P<seed>\d+)\.png$"
+)
+FAKE_C_NAME = re.compile(r"^fakeC_(?P<object>[a-z0-9]+)_(?:(?P<nomemo>nomemo)_)?(?P<idx>\d{3})_s(?P<seed>\d+)\.png$")
 
 # CSV 컬럼
 # 진짜 사진 메타데이터는 사람이 쓰지 않고 파일명·EXIF로 자동 생성한다 (src/preprocess/metadata.py).
 # 촬영 조건(펜·종이·조명·배경)은 기록하지 않기로 했다 (이슈 #5).
-REAL_METADATA_COLUMNS = ["filename", "photographer", "object", "phone_model", "width", "height", "taken_at"]
+# memo: 메모가 있으면 1, 없으면 0 (파일명의 nomemo_로 판단)
+REAL_METADATA_COLUMNS = ["filename", "photographer", "object", "memo", "phone_model", "width", "height", "taken_at"]
 OBJECTS_COLUMNS = ["object", "name_ko"]
 FAKE_MAPPING_COLUMNS = [
     "fake_filename", "fake_type", "source_filename", "mask_filename", "object",
@@ -36,8 +43,14 @@ def mask_name(fake_filename: str) -> str:
     return fake_filename.rsplit(".", 1)[0] + "_mask.png"
 
 
-def fake_c_name(obj: str, idx: int, seed: int) -> str:
-    return f"fakeC_{obj}_{idx:03d}_s{seed}.png"
+def fake_c_name(obj: str, idx: int, seed: int, memo: bool = True) -> str:
+    tag = "" if memo else f"{NOMEMO}_"
+    return f"fakeC_{obj}_{tag}{idx:03d}_s{seed}.png"
+
+
+def has_memo(filename: str) -> bool:
+    """메모가 있는 사진인지 파일명으로 판단한다. 진짜·가짜 A·B·C 모두에 쓸 수 있다."""
+    return f"_{NOMEMO}_" not in filename
 
 
 def group_id(filename: str) -> str:

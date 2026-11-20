@@ -14,14 +14,20 @@
 | 대상 | 형식 | 예시 |
 |---|---|---|
 | 진짜 사진 | `{닉네임}_{물건}_{번호3자리}.jpg` | `jaehwan_mouse_001.jpg` |
-| 가짜 A·B (인페인팅) | `fake{유형}_{원본 stem}_s{seed}.png` | `fakeA_jaehwan_mouse_001_s42.png` |
+| 진짜 사진 (메모 없음) | `{닉네임}_{물건}_nomemo_{번호3자리}.jpg` | `jaehwan_mouse_nomemo_001.jpg` |
+| 가짜 A·B (인페인팅) | `fake{유형}_{원본 stem}_s{seed}.png` | `fakeA_jaehwan_mouse_001_s42.png`, `fakeB_jaehwan_mouse_nomemo_001_s42.png` |
 | 가짜 A·B 마스크 | `{가짜 stem}_mask.png` | `fakeA_jaehwan_mouse_001_s42_mask.png` |
 | 가짜 C (text-to-image) | `fakeC_{물건}_{번호3자리}_s{seed}.png` | `fakeC_mouse_001_s7.png` |
+| 가짜 C (메모 없음) | `fakeC_{물건}_nomemo_{번호3자리}_s{seed}.png` | `fakeC_mouse_nomemo_001_s7.png` |
 
 - 닉네임·물건 이름은 **영문 소문자 + 숫자**만 씁니다. 공백, 한글, 하이픈(`-`)은 쓰지 않습니다.
 - 물건 이름 목록은 `metadata/objects.csv`에 등록된 이름만 씁니다.
 - 진짜 사진은 **원본 그대로, JPG로** 올립니다. 카카오톡으로 전송하면 재압축되므로 금지합니다. 아이폰은 설정 → 카메라 → 포맷 → 높은 호환성으로 바꿔야 JPG로 찍힙니다.
 - 촬영자와 물건은 파일명에서 읽습니다. 파일명이 규칙과 다르면 메타데이터를 만들 수 없습니다.
+- 메모 없는 사진은 번호 앞에 `nomemo_`를 붙입니다. 물건마다 메모 있는 사진 25장(`001`~`025`), 메모 없는 사진 5장(`nomemo_001`~`nomemo_005`)입니다 (이슈 #5).
+  - 가짜 B는 원본 이름을 따라가므로 `nomemo_`가 저절로 붙습니다. 가짜 C는 생성할 때 붙입니다.
+  - 가짜 A는 메모를 고치는 유형이라 메모 없는 원본으로 만들지 않습니다. 대응표에 있으면 split 생성이 멈춥니다.
+  - 메모 유무는 `src.common.schema.has_memo(파일명)`으로 진짜·가짜 모두 판단할 수 있습니다.
 
 ## 2. 폴더 구조 (`data/`)
 
@@ -61,6 +67,7 @@ data/
 | `filename` | 파일명 | 파일 | `jaehwan_mouse_001.jpg` |
 | `photographer` | 촬영자 닉네임 | 파일명 | `jaehwan` |
 | `object` | 물건 | 파일명 | `mouse` |
+| `memo` | 메모가 있으면 1, 없으면 0 | 파일명 (`nomemo_`) | `1` |
 | `phone_model` | 촬영 기기 | EXIF | `iPhone 15` |
 | `width`, `height` | 해상도(px), 회전 반영 | 이미지·EXIF | `3024`, `4032` |
 | `taken_at` | 촬영 시각 | EXIF | `2026-11-17 14:03:21` |
@@ -75,7 +82,9 @@ data/
 | `object` | 파일명에 쓰는 영문 이름 | `smartphone` |
 | `name_ko` | 한국어 이름 | `휴대폰` |
 
-20종이 등록되어 있습니다 (이슈 #5). 이름은 가짜 C 생성 코드와 같습니다.
+이슈 #5 계획은 24종이고, 지금은 확정된 20종이 등록되어 있습니다. 추가 4종은 정해지면 넣습니다.
+- 이름은 가짜 C 생성 코드와 같아야 합니다. 자동차(`car`)와 추가 4종은 C 코드에 아직 없습니다.
+- `nomemo`는 물건 이름으로 쓸 수 없습니다 (메모 없는 사진 표시와 겹침).
 
 ### 3-2. `metadata/fake_mapping.csv` — 가짜 ↔ 원본 대응표 (생성 담당)
 

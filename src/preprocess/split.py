@@ -23,7 +23,7 @@ import pandas as pd
 import yaml
 
 from src.common import paths
-from src.common.schema import FAKE_TYPES, MODEL1_COLUMNS, POSTPROCESSES, SPLIT_COLUMNS, SPLITS
+from src.common.schema import FAKE_TYPES, MODEL1_COLUMNS, POSTPROCESSES, SPLIT_COLUMNS, SPLITS, has_memo
 
 
 def _stem(filename: str) -> str:
@@ -56,6 +56,8 @@ def build_rows(real_meta: pd.DataFrame, fake_map: pd.DataFrame) -> pd.DataFrame:
         else:
             if r.source_filename not in by_source.index:
                 raise ValueError(f"{r.fake_filename}: 원본 {r.source_filename!r}이 real_metadata.csv에 없음")
+            if r.fake_type == "A" and not has_memo(r.source_filename):
+                raise ValueError(f"{r.fake_filename}: A는 메모를 고치는 유형이라 메모 없는 원본으로 만들 수 없음")
             src = by_source.loc[r.source_filename]
             if r.object and r.object != src["object"]:
                 raise ValueError(f"{r.fake_filename}: object {r.object!r}가 원본의 {src['object']!r}와 다름")

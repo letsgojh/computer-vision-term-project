@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
+from src.common import schema
 from src.preprocess import metadata, postprocess, split
 from src.preprocess.make_dummy import make
 from src.preprocess.transforms import estimate_jpeg_quality
@@ -135,6 +136,27 @@ def test_fake_with_unknown_source_is_rejected(dummy):
         split.build_rows(real, fake)
 
 
+def test_fake_a_from_nomemo_source_is_rejected(dummy):
+    root, _ = dummy
+    meta = root / "metadata"
+    real = pd.read_csv(meta / "real_metadata.csv", dtype=str, keep_default_na=False)
+    fake = pd.read_csv(meta / "fake_mapping.csv", dtype=str, keep_default_na=False)
+    row = fake.index[fake["source_filename"] == "taei_keyboard_nomemo_001.jpg"][0]  # 더미에서는 B
+    fake.loc[row, ["fake_type", "fake_filename"]] = ["A", "fakeA_taei_keyboard_nomemo_001_s1.png"]
+    with pytest.raises(ValueError, match="메모 없는 원본"):
+        split.build_rows(real, fake)
+
+
+def test_nomemo_rows_follow_their_source(dummy):
+    _, rows = dummy
+    result, _ = split.build(rows, [0.7, 0.15, 0.15], seed=42)
+    nomemo = result[~result["filename"].map(schema.has_memo)]
+    assert set(nomemo["fake_type"]) == {"real", "B", "C"}  # 메모 없는 가짜는 B·C만
+    fake_b = nomemo[nomemo["fake_type"] == "B"].set_index("group_id")["split"]
+    real = nomemo[nomemo["fake_type"] == "real"].set_index("group_id")["split"]
+    assert fake_b.index.isin(real.index).all() and (fake_b == real[fake_b.index]).all()
+
+
 # ---- export (모델 1 형식) ----
 
 def _model1_errors(df, leakage_columns=("item_id",)):
@@ -193,8 +215,10 @@ def test_metadata_reads_filename_and_exif(dummy):
     meta = pd.read_csv(root / "metadata" / "real_metadata.csv", dtype=str, keep_default_na=False)
     assert list(meta.columns) == metadata.REAL_METADATA_COLUMNS
     row = meta.set_index("filename").loc["taei_keyboard_002.jpg"]
-    assert (row["photographer"], row["object"], row["phone_model"]) == ("taei", "keyboard", "DummyPhone")
+    assert (row["photographer"], row["object"], row["memo"], row["phone_model"]) == ("taei", "keyboard", "1", "DummyPhone")
     assert (row["width"], row["height"], row["taken_at"]) == ("640", "480", "2026-11-17 10:02:00")
+    row = meta.set_index("filename").loc["taei_keyboard_nomemo_001.jpg"]
+    assert (row["photographer"], row["object"], row["memo"]) == ("taei", "keyboard", "0")
 
 
 def test_metadata_reports_bad_names_and_missing_exif(tmp_path):
@@ -216,5 +240,33 @@ def test_metadata_reports_bad_names_and_missing_exif(tmp_path):
 
 def test_objects_csv_matches_plan():
     objects = pd.read_csv("metadata/objects.csv", dtype=str)
+    # 이슈 #5: 24종 중 20종 확정. 추가 4종은 근영님이 정하면 넣고 24로 바꾼다
     assert list(objects.columns) == ["object", "name_ko"] and len(objects) == 20
     assert objects["object"].str.fullmatch(r"[a-z0-9]+").all() and objects["object"].is_unique
+    assert "car" in set(objects["object"]) and "bicycle" not in set(objects["object"])
+    assert schema.NOMEMO not in set(objects["object"])  # 물건 이름이 nomemo면 파일명을 구분할 수 없음
+
+
+# ---- 파일명 규칙 (메모 없는 사진) ----
+
+def test_nomemo_names_parse_for_real_and_fakes():
+    m = schema.REAL_NAME.match("taei_mouse_nomemo_003.jpg")
+    assert (m["photographer"], m["object"], m["nomemo"], m["idx"]) == ("taei", "mouse", "nomemo", "003")
+    assert schema.REAL_NAME.match("taei_mouse_003.jpg")["nomemo"] is None
+    assert not schema.REAL_NAME.match("taei_mouse_memo_003.jpg")
+
+    fake_b = schema.fake_ab_name("B", "taei_mouse_nomemo_003.jpg", seed=42)
+    assert fake_b == "fakeB_taei_mouse_nomemo_003_s42.png"
+    assert schema.FAKE_AB_NAME.match(fake_b)["source"] == "taei_mouse_nomemo_003"
+    assert schema.group_id(fake_b) == "taei_mouse_nomemo_003"
+
+    fake_c = schema.fake_c_name("mouse", 3, seed=7, memo=False)
+    assert fake_c == "fakeC_mouse_nomemo_003_s7.png"
+    m = schema.FAKE_C_NAME.match(fake_c)
+    assert (m["object"], m["nomemo"], m["idx"]) == ("mouse", "nomemo", "003")
+    assert schema.fake_c_name("mouse", 3, seed=7) == "fakeC_mouse_003_s7.png"
+
+    for name in ["taei_mouse_001.jpg", "fakeA_taei_mouse_001_s1.png", "fakeC_mouse_001_s1.png"]:
+        assert schema.has_memo(name)
+    for name in ["taei_mouse_nomemo_001.jpg", fake_b, fake_c]:
+        assert not schema.has_memo(name)

@@ -2,10 +2,11 @@
 
     python -m src.preprocess.metadata [--data-root <data 폴더>]
 
-입력:  data/real/*.jpg (파일명 {닉네임}_{물건}_{번호3자리}.jpg), metadata/objects.csv
+입력:  data/real/*.jpg, metadata/objects.csv
+       파일명 {닉네임}_{물건}_{번호3자리}.jpg (메모 없는 사진은 {닉네임}_{물건}_nomemo_{번호3자리}.jpg)
 출력:  metadata/real_metadata.csv
 
-촬영자·물건은 파일명에서, 기종·해상도·촬영 시각은 사진의 EXIF에서 읽는다.
+촬영자·물건·메모 유무는 파일명에서, 기종·해상도·촬영 시각은 사진의 EXIF에서 읽는다.
 사람이 따로 적는 칸은 없다 (촬영 조건은 기록하지 않기로 함, 이슈 #5).
 """
 
@@ -55,7 +56,10 @@ def build(data_root: Path, objects=()) -> tuple[pd.DataFrame, list[str], list[st
             continue
         m = REAL_NAME.match(p.name)
         if not m:
-            errors.append(f"{p.name}: 파일명 규칙 위반 ({{닉네임}}_{{물건}}_{{번호3자리}}.jpg, 영문 소문자·숫자만)")
+            errors.append(
+                f"{p.name}: 파일명 규칙 위반 ({{닉네임}}_{{물건}}_{{번호3자리}}.jpg 또는 "
+                f"{{닉네임}}_{{물건}}_nomemo_{{번호3자리}}.jpg, 영문 소문자·숫자만)"
+            )
             continue
         if objects and m["object"] not in objects:
             errors.append(f"{p.name}: '{m['object']}'은(는) objects.csv에 없는 물건")
@@ -67,7 +71,10 @@ def build(data_root: Path, objects=()) -> tuple[pd.DataFrame, list[str], list[st
         info = read_exif(p)
         if not info["phone_model"] and not info["taken_at"]:
             warnings.append(f"{p.name}: EXIF 없음 (카톡 전송본·스크린샷·편집본인지 확인)")
-        rows.append({"filename": p.name, "photographer": m["photographer"], "object": m["object"], **info})
+        rows.append({
+            "filename": p.name, "photographer": m["photographer"], "object": m["object"],
+            "memo": 0 if m["nomemo"] else 1, **info,
+        })
     return pd.DataFrame(rows, columns=REAL_METADATA_COLUMNS), errors, warnings
 
 
@@ -89,8 +96,10 @@ def main(argv=None):
     args.out.parent.mkdir(parents=True, exist_ok=True)
     meta.to_csv(args.out, index=False)
     print(f"저장: {args.out} ({len(meta)}장)")
-    if len(meta):
-        print(pd.crosstab(meta["photographer"], meta["object"], margins=True, margins_name="합계").to_string())
+    if len(meta):  # 물건마다 메모 있음 25장 + 메모 없음 5장인지 확인용
+        memo = meta["memo"].map({1: "메모 있음", 0: "메모 없음"})
+        print(pd.crosstab(meta["object"], memo, margins=True, margins_name="합계").to_string())
+        print(pd.crosstab(meta["photographer"], memo, margins=True, margins_name="합계").to_string())
 
 
 if __name__ == "__main__":
