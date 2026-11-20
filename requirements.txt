@@ -18,3 +18,6 @@ accelerate
 
 # Evaluation
 scikit-learn
+
+# Dev
+pytest
