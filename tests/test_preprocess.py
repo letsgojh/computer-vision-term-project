@@ -69,6 +69,53 @@ def test_check_real_files_flags_non_jpg(tmp_path):
     assert postprocess.check_real_files(tmp_path.parent / "nothing") == []
 
 
+def test_iphone_jpg_is_accepted(tmp_path):
+    # 아이폰 JPG에는 HDR 보조 이미지가 붙어 있어 Pillow가 MPO로 읽는다
+    real = tmp_path / "real"
+    real.mkdir()
+    Image.new("RGB", (40, 30)).save(
+        real / "taei_mouse_001.jpg", "MPO", save_all=True, append_images=[Image.new("RGB", (20, 15))]
+    )
+    with Image.open(real / "taei_mouse_001.jpg") as im:
+        assert im.format == "MPO"
+    assert postprocess.check_real_files(tmp_path) == []
+    assert postprocess.run(tmp_path, CFG, ["original"]) == {"original": 1}
+    with Image.open(tmp_path / "processed" / "original" / "taei_mouse_001.jpg") as im:
+        assert (im.format, im.size) == ("JPEG", (40, 30))
+
+
+def test_real_photos_in_drive_folders(tmp_path):
+    # 드라이브: 사람별 하위 폴더, 구글 폼이 붙인 " - 이름", 대문자 이름·확장자
+    real = tmp_path / "real"
+    for d in ("taei(tripod,desk)", "Yoojaehwan(mouse)", ".trash"):
+        (real / d).mkdir(parents=True)
+    exif = Image.Exif()
+    exif[0x0110] = "iPhone Air"
+    Image.new("RGB", (40, 30)).save(real / "taei(tripod,desk)" / "taei_tripod_001 - 김태이.JPG", exif=exif)
+    Image.new("RGB", (40, 30)).save(real / "Yoojaehwan(mouse)" / "Yoojaehwan_mouse_nomemo_001.jpg", exif=exif)
+    Image.new("RGB", (40, 30)).save(real / ".trash" / "taei_tripod_002.jpg")  # 숨김 폴더는 무시
+    meta, errors, warnings = metadata.build(tmp_path, objects={"tripod", "mouse"})
+    assert errors == [] and warnings == []
+    assert sorted(meta["filename"]) == ["taei_tripod_001.jpg", "yoojaehwan_mouse_nomemo_001.jpg"]
+    assert sorted(meta["photographer"]) == ["taei", "yoojaehwan"]
+    sources = postprocess.find_sources(tmp_path)
+    assert set(sources) == {"taei_tripod_001", "yoojaehwan_mouse_nomemo_001"}
+    assert sources["taei_tripod_001"].name == "taei_tripod_001 - 김태이.JPG"
+
+
+def test_same_photo_uploaded_twice_is_reported(tmp_path):
+    # 폼 응답 폴더의 사진을 real에 또 올린 경우: 규칙상 이름이 같아진다
+    real = tmp_path / "real"
+    for d in ("a", "b"):
+        (real / d).mkdir(parents=True)
+    Image.new("RGB", (40, 30)).save(real / "a" / "taei_mouse_001.jpg")
+    Image.new("RGB", (40, 30)).save(real / "b" / "taei_mouse_001 - 김태이.jpg")
+    meta, errors, _ = metadata.build(tmp_path)
+    assert len(meta) == 1 and len(errors) == 1 and "겹침" in errors[0]
+    with pytest.raises(ValueError, match="stem 중복"):
+        postprocess.find_sources(tmp_path)
+
+
 def test_recapture_matches_by_stem(dummy, tmp_path):
     root, _ = dummy
     Image.new("RGB", (64, 64)).save(tmp_path / "jaehwan_mouse_001.jpg")
@@ -248,6 +295,12 @@ def test_objects_csv_matches_plan():
 
 
 # ---- 파일명 규칙 (메모 없는 사진) ----
+
+def test_real_name_cleans_drive_names():
+    assert schema.real_name("giwon_smartwatch_014 - 차기원.jpg") == "giwon_smartwatch_014.jpg"
+    assert schema.real_name("Yoojaehwan_headphone_001.JPG") == "yoojaehwan_headphone_001.jpg"
+    assert schema.real_name("taei_mouse_nomemo_003.jpg") == "taei_mouse_nomemo_003.jpg"
+
 
 def test_nomemo_names_parse_for_real_and_fakes():
     m = schema.REAL_NAME.match("taei_mouse_nomemo_003.jpg")

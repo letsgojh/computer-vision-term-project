@@ -4,8 +4,10 @@
     python -m src.preprocess.postprocess recapture <재촬영 사진 폴더>
     python -m src.preprocess.postprocess inspect <이미지> [...]
 
-입력:  data/real/*.jpg, data/fake/{A,B,C}/*.png
+입력:  data/real/ 아래 JPG (사람별 하위 폴더 포함), data/fake/{A,B,C}/*.png
 출력:  data/processed/{original,kakao,resize,recapture}/{원본 stem}.jpg
+
+진짜 사진의 stem은 규칙상 이름(schema.real_name)을 쓴다. 구글 폼이 붙인 " - 이름"과 대문자는 무시한다.
 """
 
 import argparse
@@ -17,10 +19,13 @@ from PIL import Image
 from tqdm import tqdm
 
 from src.common import paths
+from src.common.schema import real_name
 from src.preprocess import transforms as T
 
 AUTO_VARIANTS = ("original", "kakao", "resize")  # recapture는 사람이 찍어서 따로 넣는다
 REAL_EXTS = {".jpg", ".jpeg"}
+# 아이폰 JPG에는 HDR용 보조 이미지가 함께 들어 있어서 Pillow가 MPO로 읽는다. 첫 장이 보통 JPEG다.
+REAL_FORMATS = {"JPEG", "MPO"}
 FAKE_EXTS = {".png"}
 
 
@@ -32,14 +37,20 @@ def load_config(path: Path) -> dict:
 def find_sources(data_root: Path) -> dict[str, Path]:
     """stem → 원본 경로. 진짜와 가짜 A·B·C를 모두 모은다 (마스크 제외)."""
     sources: dict[str, Path] = {}
-    folders = [(data_root / "real", REAL_EXTS)] + [(data_root / "fake" / t, FAKE_EXTS) for t in "ABC"]
-    for folder, exts in folders:
-        for p in sorted(folder.glob("*")):
-            if p.suffix.lower() not in exts:
-                continue
-            if p.stem in sources:
-                raise ValueError(f"stem 중복: {p} / {sources[p.stem]}")
-            sources[p.stem] = p
+
+    def add(stem: str, p: Path) -> None:
+        if stem in sources:
+            raise ValueError(f"stem 중복: {p} / {sources[stem]}")
+        sources[stem] = p
+
+    for p in paths.real_files(data_root):
+        name = Path(real_name(p.name))
+        if name.suffix in REAL_EXTS:
+            add(name.stem, p)
+    for t in "ABC":
+        for p in sorted((data_root / "fake" / t).glob("*")):
+            if p.suffix.lower() in FAKE_EXTS:
+                add(p.stem, p)
     return sources
 
 
@@ -47,21 +58,22 @@ def check_real_files(data_root: Path) -> list[str]:
     """data/real/에서 후처리가 읽지 못하고 건너뛸 파일을 찾는다. 문제가 없으면 빈 리스트.
 
     진짜 사진은 JPG로 통일한다. 아이폰 기본값(HEIC)이나 확장자만 .jpg로 바꾼 파일을 잡아낸다.
+    메시지는 data/real 기준 상대 경로로 시작한다 (예: "taei(tripod)/IMG_1.heic: ...").
     """
     problems = []
-    for p in sorted((data_root / "real").glob("*")):
-        if p.name.startswith(".") or not p.is_file():
-            continue
+    real = data_root / "real"
+    for p in paths.real_files(data_root):
+        rel = p.relative_to(real).as_posix()
         if p.suffix.lower() not in REAL_EXTS:
-            problems.append(f"{p.name}: JPG가 아님 (확장자 {p.suffix or '없음'})")
+            problems.append(f"{rel}: JPG가 아님 (확장자 {p.suffix or '없음'})")
             continue
         try:
             with Image.open(p) as im:
                 fmt = im.format
         except Exception:
             fmt = None
-        if fmt != "JPEG":
-            problems.append(f"{p.name}: 확장자는 .jpg인데 실제 형식은 {fmt or '읽을 수 없음'}")
+        if fmt not in REAL_FORMATS:
+            problems.append(f"{rel}: 확장자는 .jpg인데 실제 형식은 {fmt or '읽을 수 없음'}")
     return problems
 
 

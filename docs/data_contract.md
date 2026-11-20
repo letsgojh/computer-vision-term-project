@@ -46,13 +46,18 @@ data/
 └── splits/split.csv         # ③ 확정 후 변경 금지
 ```
 
+- `real/` 안은 사람별 하위 폴더로 나눠도 됩니다 (드라이브 방식). 하위 폴더까지 모두 읽습니다.
+- 구글 폼으로 올리면 파일명 뒤에 ` - 제출자 이름`이 붙습니다. 이 부분과 대문자(`.JPG` 등)는 코드가 떼고 읽고, CSV에는 규칙상 이름(`schema.real_name`)을 씁니다. 같은 사진이 두 번 올라가 이름이 겹치면 오류로 알려 줍니다.
+- 원본 진짜 사진을 열 때는 `data/real/{filename}`으로 바로 열지 말고, `src.common.paths.real_files()`로 찾은 뒤 `schema.real_name(p.name)`으로 CSV의 `filename`과 맞춥니다.
+- 아이폰 JPG는 HDR 보조 이미지가 들어 있어 Pillow가 `MPO` 형식으로 읽습니다. JPG로 인정합니다.
+
 `processed/{후처리}/` 아래 파일은 **원래 파일의 stem + `.jpg`** 입니다 (예: `fakeA_jaehwan_mouse_001_s42.png` → `processed/kakao/fakeA_jaehwan_mouse_001_s42.jpg`). `split.csv`의 `filename`에서 확장자만 `.jpg`로 바꾸면 모든 후처리 버전을 찾을 수 있습니다.
 
 진짜는 카메라 JPEG(EXIF 포함), 가짜는 생성기 PNG라서 그대로 학습하면 모델이 이미지 내용이 아니라 파일 형식으로 맞힐 수 있습니다. 그래서 `original`을 포함한 모든 후처리 결과는 **EXIF를 지우고 같은 방식으로 다시 저장한 JPEG**입니다. 모델 학습·평가에는 `data/real/`, `data/fake/`가 아니라 `data/processed/`만 씁니다.
 
 이미지 파일은 Git에 올리지 않습니다 (`.gitignore` 처리). 구글 드라이브는 **사진 저장용으로만** 씁니다.
 
-- 드라이브: `data/` 아래 이미지 폴더(`real/`, `fake/`, `processed/`, `external/`)만 위 구조 그대로 둡니다. Colab에서는 공유 폴더를 "드라이브에 바로가기 추가"한 뒤 `CVTP_DATA_ROOT`를 그 안의 `data/`로 지정합니다.
+- 드라이브: `data/` 아래 이미지 폴더(`real/`, `fake/`, `processed/`, `external/`)만 위 구조 그대로 둡니다. Colab에서는 공유 폴더를 "드라이브에 바로가기 추가"한 뒤 `CVTP_DATA_ROOT`를 `real/`·`fake/`가 들어 있는 폴더로 지정합니다.
 - Git: `data/splits/`의 CSV, `metadata/`, 코드. `CVTP_DATA_ROOT`를 바꿔도 CSV는 항상 레포 안의 것을 씁니다.
 - 드라이브·구글 폼 링크는 공개 레포(이슈, README, 코드)에 쓰지 않습니다.
 

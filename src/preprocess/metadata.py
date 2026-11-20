@@ -2,12 +2,13 @@
 
     python -m src.preprocess.metadata [--data-root <data 폴더>]
 
-입력:  data/real/*.jpg, metadata/objects.csv
+입력:  data/real/ 아래 JPG (사람별 하위 폴더 포함), metadata/objects.csv
        파일명 {닉네임}_{물건}_{번호3자리}.jpg (메모 없는 사진은 {닉네임}_{물건}_nomemo_{번호3자리}.jpg)
 출력:  metadata/real_metadata.csv
 
 촬영자·물건·메모 유무는 파일명에서, 기종·해상도·촬영 시각은 사진의 EXIF에서 읽는다.
 사람이 따로 적는 칸은 없다 (촬영 조건은 기록하지 않기로 함, 이슈 #5).
+filename에는 규칙상 이름(schema.real_name)을 쓴다. 구글 폼이 붙인 " - 이름"과 대문자는 무시한다.
 """
 
 import argparse
@@ -18,7 +19,7 @@ import pandas as pd
 from PIL import Image
 
 from src.common import paths
-from src.common.schema import REAL_METADATA_COLUMNS, REAL_NAME
+from src.common.schema import REAL_METADATA_COLUMNS, REAL_NAME, real_name
 from src.preprocess.postprocess import check_real_files
 
 _ORIENTATION, _MODEL, _DATETIME, _EXIF_IFD, _DATETIME_ORIGINAL = 0x0112, 0x0110, 0x0132, 0x8769, 0x9003
@@ -45,34 +46,40 @@ def read_exif(path: Path) -> dict:
 def build(data_root: Path, objects=()) -> tuple[pd.DataFrame, list[str], list[str]]:
     """(메타데이터, 오류, 경고)를 돌려준다. 오류가 있으면 메타데이터를 저장하면 안 된다.
 
-    오류: JPG가 아님, 파일명 규칙 위반, objects.csv에 없는 물건, stem 중복
+    오류: JPG가 아님, 파일명 규칙 위반, objects.csv에 없는 물건, 이름 중복
     경고: EXIF가 없음 (카톡 전송·스크린샷·편집본이면 EXIF가 지워져 원본이 아닐 수 있음)
+    메시지는 data/real 기준 상대 경로로 시작한다.
     """
     errors = check_real_files(data_root)
     bad_files = {m.split(":", 1)[0] for m in errors}
+    real = data_root / "real"
     rows, warnings, stems = [], [], {}
-    for p in sorted((data_root / "real").glob("*")):
-        if p.name.startswith(".") or not p.is_file() or p.name in bad_files:
+    for p in paths.real_files(data_root):
+        rel = p.relative_to(real).as_posix()
+        if rel in bad_files:
             continue
-        m = REAL_NAME.match(p.name)
+        name = real_name(p.name)
+        m = REAL_NAME.match(name)
         if not m:
             errors.append(
-                f"{p.name}: 파일명 규칙 위반 ({{닉네임}}_{{물건}}_{{번호3자리}}.jpg 또는 "
-                f"{{닉네임}}_{{물건}}_nomemo_{{번호3자리}}.jpg, 영문 소문자·숫자만)"
+                f"{rel}: 파일명 규칙 위반 ({{닉네임}}_{{물건}}_{{번호3자리}}.jpg 또는 "
+                f"{{닉네임}}_{{물건}}_nomemo_{{번호3자리}}.jpg, 영문·숫자만)"
             )
             continue
         if objects and m["object"] not in objects:
-            errors.append(f"{p.name}: '{m['object']}'은(는) objects.csv에 없는 물건")
+            errors.append(f"{rel}: '{m['object']}'은(는) objects.csv에 없는 물건")
             continue
-        if p.stem in stems:
-            errors.append(f"{p.name}: {stems[p.stem]}와 이름이 겹침 (확장자만 다름)")
+        stem = Path(name).stem
+        if stem in stems:
+            # 폼 응답 폴더에 있던 사진을 real로 복사해 두 번 올라간 경우 등
+            errors.append(f"{rel}: {stems[stem]}와 이름이 겹침 ({stem})")
             continue
-        stems[p.stem] = p.name
+        stems[stem] = rel
         info = read_exif(p)
         if not info["phone_model"] and not info["taken_at"]:
-            warnings.append(f"{p.name}: EXIF 없음 (카톡 전송본·스크린샷·편집본인지 확인)")
+            warnings.append(f"{rel}: EXIF 없음 (카톡 전송본·스크린샷·편집본인지 확인)")
         rows.append({
-            "filename": p.name, "photographer": m["photographer"], "object": m["object"],
+            "filename": name, "photographer": m["photographer"], "object": m["object"],
             "memo": 0 if m["nomemo"] else 1, **info,
         })
     return pd.DataFrame(rows, columns=REAL_METADATA_COLUMNS), errors, warnings

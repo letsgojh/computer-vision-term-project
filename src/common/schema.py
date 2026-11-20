@@ -16,6 +16,8 @@ FAKE_AB_NAME = re.compile(
     r"^fake(?P<type>[AB])_(?P<source>[a-z0-9]+_[a-z0-9]+_(?:nomemo_)?\d{3})_s(?P<seed>\d+)\.png$"
 )
 FAKE_C_NAME = re.compile(r"^fakeC_(?P<object>[a-z0-9]+)_(?:(?P<nomemo>nomemo)_)?(?P<idx>\d{3})_s(?P<seed>\d+)\.png$")
+# 구글 폼으로 올리면 드라이브가 파일명 뒤에 " - 제출자 이름"을 붙인다 (예: giwon_smartwatch_014 - 차기원.jpg)
+_FORM_SUFFIX = re.compile(r" - [^/]*(?=\.[^./]+$)")
 
 # CSV 컬럼
 # 진짜 사진 메타데이터는 사람이 쓰지 않고 파일명·EXIF로 자동 생성한다 (src/preprocess/metadata.py).
@@ -46,6 +48,15 @@ def mask_name(fake_filename: str) -> str:
 def fake_c_name(obj: str, idx: int, seed: int, memo: bool = True) -> str:
     tag = "" if memo else f"{NOMEMO}_"
     return f"fakeC_{obj}_{tag}{idx:03d}_s{seed}.png"
+
+
+def real_name(filename: str) -> str:
+    """드라이브에 올라간 진짜 사진 이름을 규칙상의 이름으로 바꾼다.
+
+    구글 폼이 붙인 " - 이름"을 떼고 소문자로 바꾼다 (아이폰 확장자 .JPG, 대문자로 쓴 닉네임).
+    CSV와 후처리 결과에는 이 이름을 쓰고, 원본 파일을 열 때는 paths.real_files()로 실제 경로를 찾는다.
+    """
+    return _FORM_SUFFIX.sub("", filename).lower()
 
 
 def has_memo(filename: str) -> bool:
