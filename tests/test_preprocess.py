@@ -287,10 +287,12 @@ def test_metadata_reports_bad_names_and_missing_exif(tmp_path):
 
 def test_objects_csv_matches_plan():
     objects = pd.read_csv("metadata/objects.csv", dtype=str)
-    # 이슈 #5: 24종 중 20종 확정. 추가 4종은 근영님이 정하면 넣고 24로 바꾼다
-    assert list(objects.columns) == ["object", "name_ko"] and len(objects) == 20
+    # 이슈 #5: 24종 (자전거 → 자동차 → 게임컨트롤러, 매트리스 → 도시락, 근영님 추가 4종)
+    assert list(objects.columns) == ["object", "name_ko"] and len(objects) == 24
     assert objects["object"].str.fullmatch(r"[a-z0-9]+").all() and objects["object"].is_unique
-    assert "car" in set(objects["object"]) and "bicycle" not in set(objects["object"])
+    names = set(objects["object"])
+    assert "gamecontroller" in names and not names & {"bicycle", "car", "mattress"}
+    assert {"lunchbox", "microphone", "muffler", "gloves", "perfume"} <= names
     assert schema.NOMEMO not in set(objects["object"])  # 물건 이름이 nomemo면 파일명을 구분할 수 없음
 
 
