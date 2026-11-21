@@ -47,7 +47,7 @@ if OUT_DIR == "fakeC" and os.path.exists(OUT_DIR):
     shutil.rmtree(OUT_DIR)
 os.makedirs(IMG_DIR, exist_ok=True)
 
-# 20종 품목: {파일명/CSV용 짧은 영문 키: SDXL 프롬프트용 상세 영어 표현}
+# 24종 품목: {파일명/CSV용 짧은 영문 키: SDXL 프롬프트용 상세 영어 표현}
 OBJ_MAP = {
     "smartphone": "smartphone",
     "laptop": "laptop",
@@ -61,17 +61,21 @@ OBJ_MAP = {
     "hoodie": "folded hoodie",
     "chair": "desk chair",
     "book": "book",
-    "bicycle": "bicycle",
+    "gamecontroller": "game controller",
     "backpack": "backpack",
     "tumbler": "tumbler",
     "cosmetics": "cosmetics bottle",
     "fridge": "mini fridge",
     "tripod": "camera tripod",
-    "mattress": "mattress",
+    "lunchbox": "lunch box",
     "desk": "wooden study desk",
+    "microphone": "desktop microphone",
+    "muffler": "knitted muffler scarf",
+    "gloves": "pair of winter gloves",
+    "perfume": "glass perfume bottle",
 }
 
-LARGE_OBJS = {"sneakers", "chair", "bicycle", "fridge", "tripod", "mattress", "desk"}
+LARGE_OBJS = {"sneakers", "chair", "fridge", "tripod", "desk"}
 
 TEMPLATE = (
     'a casual snapshot of a {obj_prompt} placed on a {bg}, '
