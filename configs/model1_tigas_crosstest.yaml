@@ -1,0 +1,30 @@
+# Cross-dataset test only: score a Defactify-trained checkpoint on TIGAS images it never saw.
+# Every row is split=test. Data root points at an existing TIGAS download (read only).
+# Use with evaluate.py --config; preprocessing always comes from the checkpoint.
+seed: 42
+data:
+  metadata: ${CVTP_DATA_ROOT}/tigas_crosstest/metadata.csv
+  root: ${TIGAS_ROOT}
+  leakage_columns: []
+  verify_images: true
+model:
+  name: efficientnet_b0
+  pretrained: false
+  preprocess: native_crop
+  input_size: 256
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  drop_rate: 0.2
+training:
+  device: auto
+  epochs: 1
+  batch_size: 64
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  num_workers: 4
+  amp: false
+  patience: 1
+  threshold: 0.5
+  tune_threshold: false
+  output_dir: outputs/model1/tigas_crosstest
+  allow_smoke: false
