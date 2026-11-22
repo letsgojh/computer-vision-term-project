@@ -1,0 +1,43 @@
+# v2: v1 (model1_defactify.yaml) + noise/blur/sharpen augmentation applied equally to Real and Fake.
+# Build the data first:
+#   python -m src.models.model1_full_image.scripts.prepare_defactify --source <hf download> \
+#     --output $CVTP_DATA_ROOT/defactify_model1 --root $CVTP_DATA_ROOT/defactify_model1
+# Real images are non-square and fakes are square, so preprocess=native_crop is required:
+# letterbox padding would mark every real image (see scripts/audit_shortcuts.py).
+seed: 42
+data:
+  metadata: ${CVTP_DATA_ROOT}/defactify_model1/metadata.csv
+  root: ${CVTP_DATA_ROOT}/defactify_model1
+  leakage_columns: [caption_id]
+  verify_images: true
+model:
+  name: efficientnet_b0
+  pretrained: true
+  preprocess: native_crop
+  input_size: 256
+  augment:
+    p_downscale: 0.5
+    p_jpeg: 0.3
+    p_noise: 0.3
+    noise_sigma: [2.0, 10.0]
+    p_blur: 0.2
+    blur_radius: [0.3, 1.5]
+    p_sharpen: 0.2
+    jpeg_quality: [70, 95]
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  drop_rate: 0.2
+training:
+  device: auto
+  epochs: 15
+  batch_size: 64
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  num_workers: 4
+  amp: true
+  amp_init_scale: 1024
+  patience: 4
+  threshold: 0.5
+  tune_threshold: true
+  output_dir: outputs/model1/defactify_v2_noise_aug
+  allow_smoke: false

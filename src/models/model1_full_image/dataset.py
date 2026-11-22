@@ -4,9 +4,10 @@ import io
 import random
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -109,6 +110,12 @@ class NativeCropTransform:
         self.p_downscale = float(augment.get("p_downscale", 0.5))
         self.p_jpeg = float(augment.get("p_jpeg", 0.3))
         self.jpeg_quality = tuple(augment.get("jpeg_quality", [70, 95]))
+        # Off by default so v1 configs train exactly as before.
+        self.p_noise = float(augment.get("p_noise", 0.0))
+        self.noise_sigma = tuple(augment.get("noise_sigma", [2.0, 10.0]))
+        self.p_blur = float(augment.get("p_blur", 0.0))
+        self.blur_radius = tuple(augment.get("blur_radius", [0.3, 1.5]))
+        self.p_sharpen = float(augment.get("p_sharpen", 0.0))
         self.eval_resize_short = eval_resize_short
         self.tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 
@@ -136,6 +143,15 @@ class NativeCropTransform:
         if self.train:
             if random.random() < 0.5:
                 image = ImageOps.mirror(image)
+            # Same noise/blur/sharpen odds for Real and Fake, so grain level stops predicting the label.
+            if random.random() < self.p_blur:
+                image = image.filter(ImageFilter.GaussianBlur(random.uniform(*self.blur_radius)))
+            elif random.random() < self.p_sharpen:
+                image = image.filter(ImageFilter.UnsharpMask(radius=random.uniform(1, 2), percent=random.randint(50, 150), threshold=0))
+            if random.random() < self.p_noise:
+                pixels = np.asarray(image, dtype=np.float32)
+                pixels += np.random.normal(0, random.uniform(*self.noise_sigma), pixels.shape).astype(np.float32)
+                image = Image.fromarray(pixels.clip(0, 255).astype(np.uint8))
             if random.random() < self.p_jpeg:
                 buffer = io.BytesIO()
                 image.save(buffer, format="JPEG", quality=random.randint(*self.jpeg_quality))

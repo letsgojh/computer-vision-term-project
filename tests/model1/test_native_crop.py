@@ -44,6 +44,17 @@ class NativeCropTest(unittest.TestCase):
         image = noise(640, 480)
         self.assertFalse(torch.equal(transform(image), transform(image)))
 
+    def test_noise_blur_sharpen_augmentations(self):
+        flat = Image.new("RGB", (300, 300), (128, 128, 128))
+        off = {"p_downscale": 0, "p_jpeg": 0}
+        noisy = NativeCropTransform(256, MEAN, STD, True, {**off, "p_noise": 1.0})(flat)
+        self.assertGreater(float(noisy.std()), 0.01)
+        for key in ["p_blur", "p_sharpen"]:
+            out = NativeCropTransform(256, MEAN, STD, True, {**off, key: 1.0})(noise(300, 300))
+            self.assertEqual(tuple(out.shape), (3, 256, 256))
+        # Defaults keep v1 behaviour: no noise on a flat image.
+        self.assertEqual(float(NativeCropTransform(256, MEAN, STD, True, off)(flat).std()), 0.0)
+
     def test_build_transform_selects_mode(self):
         config = {"input_size": 256, "mean": MEAN, "std": STD}
         self.assertNotIsInstance(build_transform(config), NativeCropTransform)
