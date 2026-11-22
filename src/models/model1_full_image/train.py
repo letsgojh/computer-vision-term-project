@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 import yaml
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from src.models.model1_full_image.dataset import ImageDataset, build_transform, dataset_summary, read_metadata
@@ -91,7 +91,15 @@ def train(config_path, device_name=None):
     if drop_last:
         print("Dropping final singleton training batch for BatchNorm.")
     common = {"num_workers": settings["num_workers"], "pin_memory": device.type == "cuda", "worker_init_fn": seed_worker}
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, generator=generator, drop_last=drop_last, **common)
+    if settings.get("weighted_sampler", False):
+        # Rebalances small sources (e.g. a few hundred phone photos) against large public sets.
+        if "sample_weight" not in train_set.frame:
+            raise ValueError("training.weighted_sampler needs a sample_weight column in the metadata")
+        weights = torch.as_tensor(pd.to_numeric(train_set.frame.sample_weight).to_numpy(), dtype=torch.double)
+        sampler = WeightedRandomSampler(weights, num_samples=len(train_set), replacement=True, generator=generator)
+        train_loader = DataLoader(train_set, batch_size=batch_size, sampler=sampler, drop_last=drop_last, **common)
+    else:
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, generator=generator, drop_last=drop_last, **common)
     val_loader = DataLoader(val_set, batch_size=settings["batch_size"], shuffle=False, **common)
     # No test loader: test is used only by the separate evaluation entry point.
     model = build_model(config["model"]).to(device)
