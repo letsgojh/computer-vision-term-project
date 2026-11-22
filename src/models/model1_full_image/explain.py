@@ -170,12 +170,21 @@ def file_sha256(path):
 
 
 def save_explanation(original, result, probability, threshold, input_size, image_path, checkpoint_path,
-                     output_dir=None, is_smoke=False):
-    """Save original, heatmap, transparent overlay, figure and machine-readable evidence."""
+                     output_dir=None, is_smoke=False, heatmap=None, geometry=None):
+    """Save original, heatmap, transparent overlay, figure and machine-readable evidence.
+
+    Letterbox models pass result["cam"] and the map is aligned here. Other preprocessing
+    (native_crop tiles) passes an already aligned heatmap the size of `original`.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    heatmap, geometry, padding_share = align_cam(result["cam"], original.size, input_size)
+    if heatmap is None:
+        heatmap, geometry, padding_share = align_cam(result["cam"], original.size, input_size)
+    else:
+        heatmap, padding_share = np.asarray(heatmap, dtype=np.float32), None
+        if heatmap.shape != (original.size[1], original.size[0]):
+            raise ValueError("heatmap must match the original image size")
     summary = spatial_summary(heatmap)
     text = explanation_text(summary, probability, threshold, padding_share)
     image_sha, checkpoint_sha = file_sha256(image_path), file_sha256(checkpoint_path)
@@ -229,7 +238,8 @@ def save_explanation(original, result, probability, threshold, input_size, image
               "image_path": str(Path(image_path).resolve()), "image_sha256": image_sha,
               "checkpoint_path": str(Path(checkpoint_path).resolve()), "checkpoint_sha256": checkpoint_sha,
               "activation_shape": result["activation_shape"], "gradient_l1": result["gradient_l1"],
-              "native_cam_max": result["native_cam_max"], "letterbox": geometry,
+              "native_cam_max": result["native_cam_max"], "geometry": geometry,
+              "letterbox": None if geometry and geometry.get("mode") == "native_crop_tiles" else geometry,
               "padding_cam_mass_share": padding_share, "normalization": "ReLU CAM / original-region maximum; per image",
               "spatial_summary": summary, "explanation_ko": text, "disclaimer_ko": DISCLAIMER, "files": artifacts}
     (output / "explanation.json").write_text(json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")

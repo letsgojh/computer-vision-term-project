@@ -77,9 +77,14 @@ $env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선
 .\.venv\Scripts\python.exe -m src.models.model1_full_image.predict --image <사진.jpg> --checkpoint <best_model.pth>
 ```
 
-이 명령은 체크포인트의 단일 임계값을 쓰고, `native_crop` 모델(v1~)에서는 가운데 크롭 1개만 봅니다. 사진 전체를 보는 판정은 데모를 쓰세요.
+판정에는 체크포인트에 저장된 단일 임계값(Real/Fake)을 씁니다. 3단계 판정은 데모에서 보세요.
 
-`--explain`(Grad-CAM 저장)은 letterbox 좌표를 기준으로 히트맵을 원본에 맞춥니다. 그래서 **letterbox 모델(v0)에서만 위치가 정확**하고, v1~의 히트맵은 데모에서 보세요.
+`native_crop` 모델(v1~)은 데모와 같은 방식으로 채점합니다. 짧은 변을 512로 맞추고 겹치는 크롭으로 사진 전체를 덮어 점수를 평균냅니다. 그래서 같은 사진이면 데모와 같은 점수가 나옵니다.
+
+`--explain`을 붙이면 Grad-CAM 결과물을 `outputs/explanations/` 아래에 저장합니다.
+- 저장되는 파일은 `explanation.png`, `overlay.png`, `heatmap_values.npy`, `explanation.json`입니다.
+- `native_crop` 모델은 크롭별 히트맵을 이어 붙여 원본 사진 크기에 맞춥니다. letterbox 모델은 여백을 제외하고 맞춥니다.
+- `explanation.json`의 `geometry` 항목에 어떤 방식으로 맞췄는지 기록됩니다.
 
 ## 4. v2 재현 (학습부터 평가까지)
 

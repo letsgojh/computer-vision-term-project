@@ -76,15 +76,21 @@ def analyze(model, checkpoint, device, image, with_heatmap=True, work_short=WORK
         # Taper each crop toward its edges so overlapping crops blend without grid seams.
         window = torch.hann_window(size + 2, periodic=False)[1:-1]
         window = torch.outer(window, window)
+        gradcams = []
         for (x, y), tensor in zip(corners, batch):
-            cam = generate_gradcam(model, tensor.unsqueeze(0))["cam"]
-            cam = F.interpolate(cam, size=(size, size), mode="bilinear", align_corners=False)[0, 0]
+            gradcams.append(generate_gradcam(model, tensor.unsqueeze(0)))
+            cam = F.interpolate(gradcams[-1]["cam"], size=(size, size), mode="bilinear", align_corners=False)[0, 0]
             canvas[y:y + size, x:x + size] += cam * window
             counts[y:y + size, x:x + size] += window
         heatmap = (canvas / counts.clamp(min=1e-6)).numpy()
         peak = heatmap.max()
         heatmap = heatmap / peak if peak > 0 else heatmap
         result["heatmap"] = overlay(work, heatmap)
+        result["heatmap_values"] = heatmap.astype(np.float32)  # 0..1 at work_size, for explain.save_explanation
+        result["gradcam"] = {"target_layer": gradcams[0]["target_layer"], "fake_probability": result["fake_probability"],
+                             "activation_shape": gradcams[0]["activation_shape"],
+                             "gradient_l1": float(sum(g["gradient_l1"] for g in gradcams)),
+                             "native_cam_max": float(max(g["native_cam_max"] for g in gradcams))}
     return result
 
 
