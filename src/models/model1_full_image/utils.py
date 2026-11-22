@@ -20,7 +20,10 @@ def load_config(path):
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     project = path.parent.parent
     for section, key in [("data", "root"), ("data", "metadata"), ("training", "output_dir")]:
-        config[section][key] = str((project / config[section][key]).resolve())
+        value = os.path.expandvars(str(config[section][key]))
+        if "$" in value:
+            raise ValueError(f"Unset environment variable in {section}.{key}: {value} (e.g. set CVTP_DATA_ROOT)")
+        config[section][key] = str((project / value).resolve())
     train = config["training"]
     if train["epochs"] < 1 or train["patience"] < 1 or train["batch_size"] < 2 or train["num_workers"] < 0:
         raise ValueError("epochs/patience >=1, batch_size >=2 and num_workers >=0 required")
