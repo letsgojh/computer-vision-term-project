@@ -1,208 +1,196 @@
-# ? ??? ?? ??
+# 모델 1 — AI 생성 이미지 판별 (전체 이미지)
 
-? ??? ?? ? `main`?? ??? `feat/GiwonCha-model1`? ????? (#3).
-????????????? ??? **? ??? ??**?? ?????.
-?? ???? `src.models.model1_full_image`, ??? `configs/model1_*.yaml`,
-???? `tests/model1/`? ????. ?? ??? ?? ??? ??? ?????.
+중고거래 물건 사진이 **AI로 생성된 이미지인지** 판단합니다. 결과는 세 가지입니다.
 
-## NVIDIA PC? Apple Silicon Mac ?? ??
+- AI 생성 확률 (0~1)
+- 3단계 판정: 통과 / 의심(사람이 확인) / AI
+- AI 판정 시 Grad-CAM 히트맵
 
-`training.device: auto`? **CUDA ? MPS ? CPU** ??? ?????.
-Apple GPU? PyTorch? MPS ???? ?????: https://docs.pytorch.org/docs/stable/notes/mps.html
-????????? `--device cuda`, `--device mps`, `--device cpu`? ??? ??? ?? ????.
-??? GPU? ??? ??? ??, ?? ???? GPU? ??? CPU? ?????.
-CUDA??? ??? ?? AMP? ???? MPS/CPU??? float32? ?????.
+| 항목 | 내용 |
+|---|---|
+| 담당 | 모델 1 (브랜치 `feat/GiwonCha-model1`) |
+| 현재 버전 | **v2**. EfficientNet-B0, 원본 해상도 256 크롭, Defactify 학습, 노이즈·블러·샤프닝 증강 |
+| 개발 과정 | 버전별 구조, 결과, 한계, 변경 이유는 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 있습니다 |
+| 알려진 한계 | 직접 찍은 폰 사진을 AI로 오판하는 경우가 많습니다. iPhone 사진 120장 중 AI 확률 30% 미만은 5%뿐이었습니다. 실사용 전 반드시 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "실사용 테스트"를 확인하세요 |
 
-### ?? M5 ??? ??
-
-Apple Silicon? ???? arm64 Python 3.11 ????? ?????.
-?? ??? ??? ???? ?????. CUDA ?? wheel? Windows? lock ??? Mac? ???? ????.
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r src/models/model1_full_image/requirements.txt
-python -m src.models.model1_full_image.scripts.check_gpu
-python -m unittest discover -s tests/model1 -v
-python -m src.models.model1_full_image.scripts.check_model --device mps
-python -m src.models.model1_full_image.train --config configs/model1_team.yaml --device mps
-```
-
-???? `mps_available: true`, `selected_device: mps`? ?? MPS ?? ??? ?????.
-MPS ?? ???? Mac?? ?? EfficientNet ???Grad-CAM?CPU ????? ??? ?????.
-???? ???? ?? ??? `batch_size`? 4 ?? 2? ????.
-?? MPS ??? ???? ?? ?? `--device cpu`? ?? ??? ? ????.
-?? ?? PC??? CUDA/CPU? ????? Mac/M5 ??? ??? ?? ?? ?????.
-
-### ? ??? ???? ?? ??
-
-?????(`best_model.pth`)? ??? ????CSV? ??? ???? ???. Git?? ???? ????.
-? ???? ????? ?? ???, ???? ?? ??? ?? ??? ?????.
-?????? CPU? ?? ? ??? ??? ???? ??? ?? ?????? ??? ??? ? ????.
-??? ?? `--config configs/model1_team.yaml --device auto`? ?? ????
-?? ???? ?? ??? ?? ?? ?? ???? ??? ?????.
-??? ?? ?? ??? ??? ?? ??? ? ???, ??? ????? ??? ??? ? ????.
-?? ?? ???? ?? ???? resume ??? ?? ???? ????.
-
-## ? ???? ??
-
-PR #2? ??? ??? ??? ?? `split.py export --help`? ??? ??
-`data/splits/model1_metadata.csv`? ?????. `image_path`? ???
-`data/processed/{original,kakao,resize,recapture}/...jpg`? ???? ???.
-? CSV ?? `image_path,label,fake_type,source_id,split,domain,item_id,photographer,...`???.
-`photographer`? ??? ??????? ?? ? ??? ??(`item_id`)? ??(`source_id`)?
-split ??? ?????. ??? ??? ??? ????? `photographer`?
-`data.leakage_columns`? ?????. ? ???? TIGAS ?? ??? ???? ???.
-
-```powershell
-python -m pip install -r src/models/model1_full_image/requirements.txt
-python -m src.models.model1_full_image.scripts.validate_dataset --config configs/model1_team.yaml
-python -m src.models.model1_full_image.train --config configs/model1_team.yaml
-python -m src.models.model1_full_image.evaluate --config configs/model1_team.yaml --checkpoint outputs/model1/checkpoints/best_model.pth
-python -m src.models.model1_full_image.predict --image data/processed/original/example.jpg --checkpoint outputs/model1/checkpoints/best_model.pth
-python -m unittest discover -s tests/model1 -v
-```
-
-CSV? ??? ??? export ??? ?????. ?? ?? ??? `data/metadata.csv`?
-?? ?? ? ?? ???? CSV? ???? ? ?? ??? ? ??? ????.
-?? ?? ??? ?? ?? ????? ??? ???? ?? ???? ? ?? ??? ????.
+모델 1은 사진 전체를 봅니다. 메모 영역 탐지, OCR, 조작 영역 분할은 모델 2의 범위입니다.
 
 ---
 
-# TrueTrade AI — Model 1
+## 1. 환경 설치
 
-**XAI / Grad-CAM:** 단일 이미지 예측에 `--explain`을 추가하면 기존 checkpoint로 Fake 판단에 대한 heatmap·overlay·좌표 기반 설명을 저장합니다. 사용법과 해석 한계는 [XAI.md](XAI.md)를 참고하세요. 강조 영역은 검증된 AI 조작 영역이 아닙니다.
+Python 3.11을 권장합니다. 아래 명령은 모두 **레포 루트**에서 실행합니다.
 
-**TIGAS 선택 다운로드:** Python 3.14에서 Real/Fake 각 100장만 받는 명령과 각 2,000장으로 확대하는 방법은 [TIGAS_DOWNLOAD.md](TIGAS_DOWNLOAD.md)를 참고하세요. 자동 생성 CSV는 `data/tigas/metadata.csv`, 전용 학습 설정은 `configs/model1_tigas_train.yaml`입니다. 일반 AI 이미지의 유형 미지정 Fake는 `fake_type=unknown`으로 지원하며 A/B/C로 임의 분류하지 않습니다.
-
-이미지 **전체**를 입력받아 AI 생성·조작 의심 점수(0~1)를 출력하는 이진 분류 프로젝트입니다. EfficientNet-B0 → Global Average Pooling → 출력 1개, 학습은 `BCEWithLogitsLoss`, 추론은 sigmoid를 사용합니다. 이 점수는 검증·보정 전에는 실제 확률로 해석할 수 없습니다.
-
-- Real=0, Fake A/B/C=1. A/B/C는 학습 클래스가 아니라 평가용 메타데이터입니다.
-- Fake A: 메모만 AI inpainting, B: 상품 합성·교체, C: 전체 생성.
-- 메모 탐지·메모 crop·OCR·segmentation·글씨 자연스러움 분석은 모델 2 범위이며 구현하지 않습니다.
-- 종횡비를 유지하며 전체 이미지를 정사각형에 letterbox합니다. 중심 crop이나 랜덤 crop은 사용하지 않습니다. 학습에만 좌우 반전을 적용합니다.
-- 384px로 축소하면 작은 국소 조작의 단서가 사라질 수 있습니다. A/B/C별 실제 데이터 평가가 필요합니다.
-
-## 환경 설치
-
-Python 3.11 권장. 이 컴퓨터는 Windows, RTX 4070 SUPER 12GB, NVIDIA driver 610.88입니다. `nvidia-smi`의 CUDA 표시는 드라이버가 지원하는 버전이며 PyTorch의 CUDA runtime과 다를 수 있습니다.
-
-Windows PowerShell (프로젝트 루트에서):
+### Windows + NVIDIA GPU
 
 ```powershell
 py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
-.\.venv\Scripts\python.exe -m pip install -r src/models/model1_full_image/requirements.txt
+.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+.\.venv\Scripts\python.exe -m pip install -r src/models/model1_full_image/requirements.txt gradio
 .\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.check_gpu
 ```
 
-Linux:
+### Linux
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r src/models/model1_full_image/requirements.txt
-python -m src.models.model1_full_image.scripts.check_gpu
-```
+`python3.11 -m venv .venv`, `source .venv/bin/activate`로 환경을 만들고 활성화한 뒤, 위와 같은 `pip install`을 실행합니다.
 
-위 CUDA wheel 조합은 [PyTorch 공식 설치 목록](https://pytorch.org/get-started/previous-versions/)을 기준으로 선택했습니다. 다른 GPU/OS에서는 [공식 선택기](https://pytorch.org/get-started/locally/)로 호환 조합을 확인하세요. CPU만 사용하려면 첫 설치 명령의 index를 `https://download.pytorch.org/whl/cpu`로 바꾸세요. 시스템 전체 CUDA Toolkit 설치는 일반적인 wheel 실행에 필요하지 않습니다.
+### Apple Silicon Mac (MPS)
 
-이후 Windows 명령의 `.\.venv\Scripts\python.exe`는 Linux에서 활성화된 환경의 `python`으로 바꿔 실행합니다. PowerShell 가상환경 활성화 없이도 모든 명령을 실행할 수 있습니다. `src/models/model1_full_image/requirements-lock.txt`에는 이번 Windows/CUDA 검증 환경의 정확한 패키지 버전을 기록했습니다. 동일 환경을 재구성할 때 CUDA wheel 설치 후 `-r src/models/model1_full_image/requirements-lock.txt`로 설치할 수 있습니다. 다른 OS에서는 호환 wheel을 먼저 확인하세요.
+arm64 Python 3.11에서 `pip install torch torchvision`을 기본 인덱스로 설치합니다. CUDA용 lock 파일은 Mac에서 쓰지 않습니다.
 
-`check_gpu`는 필수 패키지 import, 실제 CUDA tensor 연산, GPU 이름, PyTorch CUDA 빌드, 드라이버를 확인합니다. CUDA가 없으면 CPU 빌드인지 초기화 문제인지 출력합니다. `training.device: auto`는 CUDA 우선, 불가능하면 이유와 CPU 학습이 느리다는 경고를 출력합니다. `cuda`를 지정했는데 사용할 수 없으면 오류로 종료합니다.
+`check_gpu`는 패키지 import, 실제 GPU 연산, 장치 이름을 확인합니다. 설정의 `training.device: auto`는 **CUDA → MPS → CPU** 순서로 장치를 고릅니다. `--device cuda|mps|cpu`로 직접 지정할 수도 있습니다. CUDA에서는 학습에 AMP(float16)를 쓰고, 검증·평가·추론은 항상 float32로 합니다.
 
-## 실제 데이터 입력
+`requirements-lock.txt`에는 Windows/CUDA 검증 환경의 정확한 버전이 기록되어 있습니다.
 
-`data/metadata.csv`는 헤더만 제공됩니다. 실제 이미지를 준비한 후 행을 추가하세요. 이미지를 확보하지 않은 상태에서 실제 학습 결과를 만들지 않습니다.
+## 2. 데이터 위치
 
-```csv
-image_path,label,fake_type,source_id,split,domain,photographer_id,item_id
-data/raw/real001.jpg,0,real,scene001,train,trade,user001,item001
-data/processed/fakeA001.png,1,A,scene001,train,trade,user001,item001
-data/processed/fakeB001.png,1,B,scene001,train,trade,user001,item001
-data/processed/fakeC001.png,1,C,generated001,train,trade,,
-```
-
-위 경로는 형식 예시입니다. 실제 파일은 별도로 넣어야 합니다. 필수 컬럼은 `image_path,label,fake_type,source_id,split`, split은 `train`, `val`, `test`입니다. 세 split 모두 준비하세요. 같은 원본 및 파생 Real/Fake A/B는 같은 `source_id`와 split을 사용합니다. 그룹별로 먼저 split을 정한 뒤 파생 이미지를 배치하세요. 임의의 행 단위 분할을 수행하지 않습니다.
-
-상대 이미지 경로는 `data.root` 기준입니다. 설정 파일은 프로젝트의 `configs/` 아래에 두며, `data.root`, `data.metadata`, `training.output_dir`는 프로젝트 루트 기준입니다. 절대 경로도 사용할 수 있습니다. 선택 컬럼 `photographer_id`, `item_id`가 있으면 누수를 검사하며, 다른 그룹 컬럼도 `data.leakage_columns`에 추가할 수 있습니다. 빈 선택 ID는 검사에서 제외합니다. 잘못된 라벨/type, 빈 필수 ID, split 간 그룹 중복, 중복 이미지 경로, 누락·손상 이미지에서 실패합니다. 별도 파일로 복제한 동일 이미지는 경로 검사로 발견할 수 없으므로 원본 ID를 정확히 관리해야 합니다.
-
-선택 `domain` 컬럼에 `general`(일반 AI 이미지), `trade`(중고거래 인증샷) 등을 넣으면 동일 임계값으로 domain별 지표도 저장합니다. 이 컬럼이 없으면 전체 성능만 계산합니다. 일반 이미지 결과로 인증샷 성능을 대신 주장하지 마세요.
+이미지, 체크포인트, 결과 파일은 Git에 올리지 않습니다. 데이터는 레포 밖 폴더에 두고, 환경변수로 위치를 알려 줍니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.validate_dataset --config configs/model1_baseline.yaml
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.train --config configs/model1_baseline.yaml
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --checkpoint outputs/checkpoints/best_model.pth --config configs/model1_baseline.yaml
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.predict --image data/sample.jpg --checkpoint outputs/checkpoints/best_model.pth
+$env:CVTP_DATA_ROOT = "D:\cvtp-data"            # Defactify 등 학습 데이터
+$env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선택)
 ```
 
-Linux:
+설정 파일의 `${CVTP_DATA_ROOT}`는 실행할 때 이 값으로 바뀝니다. 값이 비어 있으면 바로 오류가 납니다.
 
-```bash
-python -m src.models.model1_full_image.scripts.validate_dataset --config configs/model1_baseline.yaml
-python -m src.models.model1_full_image.train --config configs/model1_baseline.yaml
-python -m src.models.model1_full_image.evaluate --checkpoint outputs/checkpoints/best_model.pth --config configs/model1_baseline.yaml
-python -m src.models.model1_full_image.predict --image data/sample.jpg --checkpoint outputs/checkpoints/best_model.pth
+## 3. 데모 실행
+
+학습된 체크포인트(`best_model.pth`)와 `thresholds.json`이 필요합니다. 둘 다 Git에 없으므로 공유 드라이브에서 받아 같은 폴더 구조로 둡니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m app.model1_demo `
+  --checkpoint outputs/model1/defactify_v2_noise_aug/checkpoints/best_model.pth `
+  --version "v2 — v1 + 노이즈·블러·샤프닝 증강"
 ```
 
-추론 출력은 `Fake Probability: ...`, `Prediction: Real/Fake`입니다. 체크포인트가 없으면 명확한 오류를 출력합니다. 신뢰할 수 있는 체크포인트만 로드하세요.
+브라우저에서 http://127.0.0.1:7860 을 엽니다.
 
-## 설정과 평가 원칙
+- 사진을 올리고 **판별**을 누르면 AI 확률과 3단계 판정이 나옵니다. "AI"로 판정되면 히트맵도 나옵니다.
+- 슬라이더로 의심 임계값과 AI 임계값을 바로 바꿀 수 있습니다. **임계값 저장**을 누르면 `thresholds.json`에 기록됩니다.
+- 사진은 짧은 변을 512로 맞춘 뒤, 겹치는 256×256 조각으로 전체를 덮어 점수를 평균냅니다. 조각별 Grad-CAM은 가장자리를 부드럽게 섞어 이어 붙입니다.
 
-`configs/model1_baseline.yaml`: ImageNet 사전학습 EfficientNet-B0, 384×384, AdamW lr=1e-4, batch=16, 20 epochs, cosine scheduler, CUDA AMP, seed=42, patience=5. 메모리 부족 시 `training.batch_size`를 줄이세요. AMP overflow로 갱신이 모두 생략되면 실패로 종료합니다. 이때 `training.amp_init_scale`을 낮추거나 `amp: false`로 재실행하세요. 로그의 `optimizer_updates`에 실제 갱신 수를 기록합니다. 검증·평가·추론은 float32를 사용합니다. 작은 데이터에서도 training batch가 1개 이미지가 되지 않게 구성하며 마지막 singleton batch는 버립니다. Windows 기본 `num_workers=0`; 필요에 따라 늘릴 수 있습니다. 재현성 seed를 고정하지만 장치·라이브러리 버전 간 비트 단위 일치를 보장하지는 않습니다.
+히트맵은 모델이 판단에 주목한 영역일 뿐, 생성·조작된 위치의 증거가 아닙니다. 해석 시 주의점은 [XAI.md](XAI.md)를 참고하세요.
 
-사전학습 가중치는 첫 실제 학습에서 인터넷 다운로드가 필요합니다. 다운로드 실패 시 무작위 가중치로 자동 대체하지 않습니다. [timm 공식 API](https://huggingface.co/docs/timm/main/reference/models)의 모델 이름과 pretrained 옵션을 사용합니다. ResNet/ViT로 교체하려면 `model.name`과 해당 모델의 입력 크기·mean/std 등을 함께 검토하세요. 기본 전처리는 EfficientNet ImageNet 기준입니다.
+단일 이미지를 명령줄에서 예측할 수도 있습니다.
 
-매 epoch **validation에서만** F1 최대 임계값을 선택하고 해당 F1로 best checkpoint를 선택합니다. 동률이면 0.5에 가까운 임계값을 택합니다. `tune_threshold: false`면 설정의 고정 threshold를 저장합니다. 임계값 탐색 시 validation에는 두 클래스가 모두 있어야 합니다. test loader는 학습에서 만들지 않습니다. test에서는 checkpoint의 임계값과 전처리를 고정하며 재탐색 옵션을 제공하지 않습니다. validation 반복 활용의 과적합을 피하려면 충분한 검증 데이터가 필요합니다.
+```powershell
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.predict --image <사진.jpg> --checkpoint <best_model.pth>
+```
 
-`best_model.pth`, `last_model.pth`는 모델/optimizer/scheduler/scaler 상태, epoch, best F1, 임계값, 설정, smoke 표시, seed·환경 정보를 저장합니다. `last`는 마지막 epoch, `best`는 validation F1 최고 epoch입니다. 학습 CLI는 새 실행이며 resume 기능은 포함하지 않습니다. 기존 checkpoint가 있는 출력 폴더의 덮어쓰기를 막으므로 실험마다 새 `output_dir`를 지정하세요.
+이 명령은 체크포인트의 단일 임계값을 쓰고, `native_crop` 모델(v1~)에서는 가운데 크롭 1개만 봅니다. 사진 전체를 보는 판정은 데모를 쓰세요.
 
-평가 결과:
+`--explain`(Grad-CAM 저장)은 letterbox 좌표를 기준으로 히트맵을 원본에 맞춥니다. 그래서 **letterbox 모델(v0)에서만 위치가 정확**하고, v1~의 히트맵은 데모에서 보세요.
 
-- `outputs/predictions/test_metrics.json` 및 `test_metrics.csv`: Accuracy, Precision, Recall, F1, ROC-AUC, 2×2 confusion matrix (행=true, 열=prediction, 순서 Real/Fake), A/B/C recall 및 표본 수, domain별 지표.
-- `outputs/predictions/test_predictions.csv`: `image_path,label,fake_type,fake_probability,prediction,source_id` (+ domain). prediction은 0/1로 모델 2와 결합 가능합니다.
-- 클래스가 하나뿐이면 ROC-AUC는 JSON `null`/CSV 빈 값, 없는 Fake 유형 recall도 `null`로 저장합니다. Precision/Recall/F1의 0분모는 0으로 처리합니다.
-- `outputs/logs/training.csv`, `outputs/figures/training_curves.png`, `outputs/config.yaml`, metadata 사본 및 환경 정보를 함께 저장합니다.
+## 4. v2 재현 (학습부터 평가까지)
 
-test 평가에 다른 metadata를 넣더라도 학습/검증에서 사용한 source, 선택 그룹 ID, 이미지 경로와 겹치면 거부합니다. 학습 당시 기록한 identity와 비교하므로 test 파일의 split만 바꾸는 방식으로 우회할 수 없습니다. 학습 때 사용한 선택 ID 컬럼을 새 평가 metadata에서 누락해도 검사 불가 오류로 종료합니다. ID가 다른 복제 이미지나 의미적으로 같은 장면까지 자동 탐지하지는 않습니다.
+```powershell
+# 1) Defactify 내려받기 (약 7.5GB)
+.\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download('Rajarshi-Roy-research/Defactify_Image_Dataset', repo_type='dataset', local_dir=r'$env:CVTP_DATA_ROOT\defactify', allow_patterns=['data/*'])"
 
-## 합성 데이터로 코드 동작 확인
+# 2) 이미지 파일과 metadata.csv로 변환 (DALL-E 3, Midjourney는 test 전용)
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.prepare_defactify --source $env:CVTP_DATA_ROOT/defactify --output $env:CVTP_DATA_ROOT/defactify_model1 --root $env:CVTP_DATA_ROOT/defactify_model1
 
-아래 데이터는 도형과 문자열로 만든 **SYNTHETIC ONLY** fixture입니다. AI 생성·조작 데이터셋이 아니며 모든 출력 점수와 지표는 파이프라인 확인용입니다. 모델 성능으로 인용하면 안 됩니다. `configs/model1_smoke.yaml`은 인터넷 가중치 없이 64px, 1 epoch로 실행합니다. baseline과 데이터·출력·체크포인트를 분리합니다. smoke checkpoint를 평가·추론하려면 명시적인 `--allow-smoke`가 필요합니다.
+# 3) 지름길 검사: 픽셀 없이 크기 등 메타데이터만으로 맞힐 수 있는지
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.audit_shortcuts --metadata $env:CVTP_DATA_ROOT/defactify_model1/metadata.csv --root $env:CVTP_DATA_ROOT/defactify_model1
+
+# 4) 학습 (RTX 4070 SUPER 기준 약 50분)
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.train --config configs/model1_defactify_v2.yaml
+
+# 5) 3단계 임계값 계산 -> outputs/model1/defactify_v2_noise_aug/thresholds.json
+$CK = "outputs/model1/defactify_v2_noise_aug/checkpoints/best_model.pth"
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.calibrate_thresholds --checkpoint $CK --config configs/model1_defactify_v2.yaml
+
+# 6) 테스트 평가 (원본 해상도 / 크기 맞춤) + 학습 생성기 vs hold-out 생성기 분석
+$O = "outputs/model1/defactify_v2_noise_aug"
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --checkpoint $CK --config configs/model1_defactify_v2.yaml --output-dir $O/eval_native
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --checkpoint $CK --config configs/model1_defactify_v2.yaml --output-dir $O/eval_resize512 --eval-resize-short 512
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.analyze_generalization --predictions $O/eval_native/test_predictions.csv --thresholds $O/thresholds.json --output $O/eval_native
+
+# 7) TIGAS 교차 테스트 (선택, 학습에 없던 데이터셋)
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --checkpoint $CK --config configs/model1_tigas_crosstest.yaml --output-dir $O/eval_tigas
+```
+
+TIGAS를 받는 방법은 [TIGAS_DOWNLOAD.md](TIGAS_DOWNLOAD.md)에 있습니다. 교차 테스트용 `metadata.csv`는 모든 행을 `split=test`로 하고, `caption_id` 열을 포함해야 합니다(누수 검사용).
+
+## 5. 설정 파일
+
+| 설정 | 용도 |
+|---|---|
+| `configs/model1_defactify_v2.yaml` | **현재 버전(v2)**. v1과 같고, 진짜·가짜 모두에 노이즈·블러·샤프닝 증강을 적용합니다 |
+| `configs/model1_defactify.yaml` | v1. Defactify, `preprocess: native_crop`, 256 크롭, 생성기 hold-out |
+| `configs/model1_tigas_crosstest.yaml` | Defactify로 학습한 모델을 TIGAS로 평가합니다(평가 전용) |
+| `configs/model1_tigas_*.yaml` | v0. TIGAS 학습, letterbox 384 |
+| `configs/model1_team.yaml` | 팀 데이터(`split.csv` 기반) 학습용 |
+| `configs/model1_baseline.yaml`, `configs/model1_smoke.yaml` | 기본값 예시 / 합성 데이터로 코드 동작만 확인 |
+
+전처리는 `model.preprocess`로 고릅니다.
+- `letterbox` (기본값, v0): 비율을 유지해 정사각형으로 축소하고 빈 곳을 채웁니다. 데이터의 진짜와 가짜가 크기·비율이 다르면, 채운 띠가 정답 단서가 됩니다.
+- `native_crop` (v1~): 리사이즈 없이 원본 픽셀에서 잘라냅니다. 학습 증강은 `model.augment`에서 설정하며, 진짜와 가짜에 같은 확률로 적용됩니다.
+
+## 6. 평가 원칙
+
+- **임계값**: 학습 중 임계값과 best 체크포인트는 **검증셋으로만** 고릅니다. test에서는 체크포인트에 저장된 값을 그대로 쓰고 다시 찾지 않습니다.
+- **3단계 판정**(`thresholds.py`): 검증셋으로 계산합니다.
+  - 의심 = min(AI 재현율 95% 지점, 진짜 오탐률 5% 지점)
+  - AI = 진짜 오탐률 1% 지점
+  - 미탐(AI를 진짜로 통과)을 더 위험하게 보는 설정입니다.
+- **누수 검사**: `source_id`와 `data.leakage_columns`(Defactify는 `caption_id`)가 split 사이에 겹치면 학습을 거부합니다. 평가 때도 학습·검증에 쓴 ID가 test에 섞이면 거부합니다.
+- **일반화 평가**: 같은 데이터셋 점수만으로는 부족합니다.
+  - 학습하지 않은 생성기(hold-out)
+  - 학습하지 않은 데이터셋(TIGAS)
+  - 크기 맞춤(`--eval-resize-short`)
+  - 실제 폰 사진
+
+  이 결과를 따로 보고합니다.
+- **기록**: 수치는 측정한 것만 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 출처와 함께 적습니다.
+
+## 7. 팀 데이터로 학습 (`split.csv` 기반)
+
+후처리 담당의 `split.py export`로 `data/splits/model1_metadata.csv`를 만든 뒤 실행합니다. `image_path`는 `data/processed/{original,kakao,resize,recapture}/...`를 가리킵니다. 같은 물건(`item_id`)과 원본(`source_id`)은 같은 split에 있어야 합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.validate_dataset --config configs/model1_team.yaml
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.train --config configs/model1_team.yaml
+.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --config configs/model1_team.yaml --checkpoint <best_model.pth>
+```
+
+CSV 필수 열은 `image_path,label,fake_type,source_id,split`입니다. label은 진짜 0, 가짜 1이고, fake_type은 `real`, `A`, `B`, `C`, `unknown` 중 하나입니다.
+
+## 8. 합성 데이터로 코드 동작 확인
+
+도형과 문자로 만든 **합성 전용** 데이터입니다. 여기서 나온 지표는 탐지 성능이 아니므로, 성능으로 인용하면 안 됩니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.create_smoke_test_data
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.scripts.validate_dataset --config configs/model1_smoke.yaml
 .\.venv\Scripts\python.exe -m unittest discover -s tests/model1 -v
 .\.venv\Scripts\python.exe -m src.models.model1_full_image.train --config configs/model1_smoke.yaml
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.evaluate --config configs/model1_smoke.yaml --checkpoint outputs/smoke/checkpoints/best_model.pth --allow-smoke
-.\.venv\Scripts\python.exe -m src.models.model1_full_image.predict --image data/smoke/smoke_test_0_A.png --checkpoint outputs/smoke/checkpoints/best_model.pth --allow-smoke
-.\.venv\Scripts\python.exe -m compileall -q src scripts tests
 ```
 
-Linux에서는 같은 명령의 실행기를 `python`으로 바꾸세요. 생성기는 기존 `data/smoke/metadata.csv`를 덮어쓰지 않습니다.
+smoke 체크포인트를 평가하거나 추론하려면 `--allow-smoke`를 명시해야 합니다.
 
-## 파일 안내
+## 9. 파일 안내
 
-| 경로 | 역할 |
+| 경로 (`src/models/model1_full_image/` 기준) | 역할 |
 |---|---|
-| `configs/model1_baseline.yaml`, `configs/model1_smoke.yaml` | 실제 실험 기본값 / 합성 검증 전용 설정 |
-| `src/models/model1_full_image/requirements.txt`, `src/models/model1_full_image/requirements-lock.txt` | 호환 의존성 범위 / 이번 검증 환경의 정확한 버전 |
-| `src/dataset.py` | CSV 검증, 누수 검사, 전체 이미지 전처리, Dataset |
-| `src/model.py` | timm backbone과 단일 logit head |
-| `src/train.py` | train/validation, AMP, best/last 저장, early stopping, 곡선 |
-| `src/evaluate.py` | 저장된 임계값으로 test 평가 및 개별 예측 저장 |
-| `src/predict.py` | 전체 이미지 한 장 추론 |
-| `src/utils.py` | config, seed, 장치, 지표, 임계값, 체크포인트 공통 처리 |
-| `scripts/check_gpu.py` | OS/Python/import/CUDA 진단 |
-| `scripts/check_model.py`, `scripts/check_checkpoint.py` | 384px forward / 학습 가중치 변경 및 체크포인트 복원 검사 |
-| `scripts/validate_dataset.py` | 학습 전 전체 데이터 검증과 분포 출력 |
-| `scripts/create_smoke_test_data.py` | 실제 성능 평가에 쓰지 않는 합성 fixture 생성 |
-| `tests/` | 데이터 누수, 단일 클래스 지표, 임계값 및 checkpoint 회귀 검사 |
-| `data/raw`, `processed`, `splits` | 원본·가공 이미지·분할 자료 보관 |
-| `outputs/` | 실제 실험 산출물; `outputs/smoke/`는 합성 검증 전용 |
-| `VALIDATION.md` | 이번 구현의 실제 실행 결과와 남은 검증 항목 |
+| `dataset.py` | CSV 검증, 누수 검사, 전처리(`letterbox`, `native_crop`과 증강), Dataset |
+| `model.py` | timm 백본 + 단일 logit 출력 |
+| `train.py` | 학습, 검증 F1로 best 선택, early stopping, 학습 곡선 |
+| `evaluate.py` | 저장된 임계값으로 test 평가, 이미지별 예측 저장, 크기 맞춤 옵션 |
+| `predict.py` | 이미지 한 장 추론 (`--explain`으로 Grad-CAM 저장) |
+| `inference.py` | 사진 전체를 크롭으로 덮어 채점하고 히트맵을 이어 붙입니다(데모가 사용) |
+| `thresholds.py` | 3단계 판정과 임계값 계산 |
+| `explain.py` | Grad-CAM 계산과 설명 저장 |
+| `utils.py` | 설정(환경변수 포함), seed, 장치, 지표, 체크포인트 공통 처리 |
+| `scripts/prepare_defactify.py` | Defactify → 이미지 + `metadata.csv`, 생성기 hold-out 분리 |
+| `scripts/audit_shortcuts.py` | 메타데이터만으로 정답을 맞힐 수 있는지(지름길) 검사 |
+| `scripts/calibrate_thresholds.py` | 검증셋으로 `thresholds.json` 생성 |
+| `scripts/analyze_generalization.py` | 학습 생성기와 hold-out 생성기의 성능, 진짜 판정 비율 분석 |
+| `scripts/download_tigas.py`, `scripts/visualize_tigas_samples.py` | TIGAS 선택 다운로드와 샘플 확인 |
+| `scripts/check_gpu.py`, `check_model.py`, `check_checkpoint.py`, `check_gradcam.py` | 환경, 모델, 체크포인트, Grad-CAM 점검 |
+| `scripts/validate_dataset.py`, `create_smoke_test_data.py` | 학습 전 데이터 검증 / 합성 fixture 생성 |
+| `../../../app/model1_demo.py` | Gradio 데모 |
+| `../../../tests/model1/` | 단위 테스트 (`python -m unittest discover -s tests/model1`) |
+| `DEVELOPMENT_LOG.md` | 버전별 개발 과정, 결과, 한계 |
+| `XAI.md`, `VALIDATION.md`, `TIGAS_DOWNLOAD.md` | Grad-CAM 해석 / v0 구현 검증 기록 / TIGAS 다운로드 방법 |
 
-실제 성능은 실제 데이터의 출처·생성기·JPEG 압축·촬영자·상품 분포에 크게 영향을 받습니다. 다음 실험에서는 충분한 A/B/C 표본, 생성기와 출처를 분리한 외부 테스트, 압축·리사이즈 강건성, 확률 보정과 운영 임계값 검증을 진행하세요.
+학습 결과는 `training.output_dir` 아래에 저장됩니다(`checkpoints/`, `logs/training.csv`, `figures/`, `config.yaml`, `environment.json`). 실험마다 새 `output_dir`를 쓰세요. 이미 체크포인트가 있는 폴더에는 덮어쓰지 않습니다.
