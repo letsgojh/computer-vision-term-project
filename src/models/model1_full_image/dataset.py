@@ -1,5 +1,7 @@
-"""CSV validation and full-image preprocessing; no region detection or cropping."""
+"""CSV validation and image preprocessing (full-image letterbox or native-resolution crop)."""
 
+import io
+import random
 from pathlib import Path
 
 import pandas as pd
@@ -88,9 +90,69 @@ class FullImageTransform:
         return self.tensor(self.augment(image))
 
 
-def build_transform(model_config, train=False):
-    """Build the same deterministic preprocessing used at evaluation and inference."""
-    return FullImageTransform(model_config["input_size"], model_config["mean"], model_config["std"], train)
+class NativeCropTransform:
+    """Crop a fixed-size patch at native resolution so size/aspect cannot leak the label.
+
+    Letterboxing adds padding only to non-square images, and upscaling small images adds
+    blur; both act as label shortcuts when real and fake sources differ in size. Training
+    applies the same random downscale, crop, flip and JPEG re-encode to Real and Fake.
+    Evaluation takes a center crop, optionally after resizing the short side to a fixed
+    length (eval_resize_short) for a size-matched robustness check.
+    """
+
+    def __init__(self, size, mean, std, train=False, augment=None, eval_resize_short=None):
+        self.size = int(size)
+        if self.size < 32:
+            raise ValueError("input_size must be >=32")
+        self.train = train
+        augment = augment or {}
+        self.p_downscale = float(augment.get("p_downscale", 0.5))
+        self.p_jpeg = float(augment.get("p_jpeg", 0.3))
+        self.jpeg_quality = tuple(augment.get("jpeg_quality", [70, 95]))
+        self.eval_resize_short = eval_resize_short
+        self.tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+
+    @staticmethod
+    def resize_short(image, short):
+        width, height = image.size
+        scale = short / min(width, height)
+        return image.resize((max(short, round(width * scale)), max(short, round(height * scale))), Image.Resampling.BICUBIC)
+
+    def __call__(self, image):
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        short = min(image.size)
+        if short < self.size:
+            image = self.resize_short(image, self.size)
+        elif self.train and short > self.size and random.random() < self.p_downscale:
+            image = self.resize_short(image, random.randint(self.size, short))
+        elif not self.train and self.eval_resize_short:
+            image = self.resize_short(image, max(self.size, int(self.eval_resize_short)))
+        width, height = image.size
+        if self.train:
+            left, top = random.randint(0, width - self.size), random.randint(0, height - self.size)
+        else:
+            left, top = (width - self.size) // 2, (height - self.size) // 2
+        image = image.crop((left, top, left + self.size, top + self.size))
+        if self.train:
+            if random.random() < 0.5:
+                image = ImageOps.mirror(image)
+            if random.random() < self.p_jpeg:
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=random.randint(*self.jpeg_quality))
+                buffer.seek(0)
+                image = Image.open(buffer).convert("RGB")
+        return self.tensor(image)
+
+
+def build_transform(model_config, train=False, eval_resize_short=None):
+    """Build preprocessing from the checkpoint's model config (letterbox by default)."""
+    mode = model_config.get("preprocess", "letterbox")
+    if mode == "letterbox":
+        return FullImageTransform(model_config["input_size"], model_config["mean"], model_config["std"], train)
+    if mode == "native_crop":
+        return NativeCropTransform(model_config["input_size"], model_config["mean"], model_config["std"], train,
+                                   model_config.get("augment"), eval_resize_short)
+    raise ValueError(f"Unknown model.preprocess: {mode}")
 
 
 class ImageDataset(Dataset):

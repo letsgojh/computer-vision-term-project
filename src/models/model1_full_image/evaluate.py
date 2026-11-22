@@ -30,7 +30,7 @@ def collect_predictions(model, loader, device, threshold):
     return pd.DataFrame(rows)
 
 
-def evaluate(checkpoint_path, config_path=None, output_dir=None, device_name=None, allow_smoke=False):
+def evaluate(checkpoint_path, config_path=None, output_dir=None, device_name=None, allow_smoke=False, eval_resize_short=None):
     """Report global, A/B/C and optional domain metrics without threshold tuning."""
     checkpoint = load_checkpoint(checkpoint_path, allow_smoke)
     config = load_config(config_path) if config_path else checkpoint["config"]
@@ -43,7 +43,7 @@ def evaluate(checkpoint_path, config_path=None, output_dir=None, device_name=Non
         raise ValueError("Synthetic evaluation requires --allow-smoke; these metrics are not detector performance")
     if smoke:
         print("SYNTHETIC PIPELINE CHECK ONLY: not real-world detector performance.")
-    test_set = ImageDataset(df, "test", build_transform(checkpoint["config"]["model"]))
+    test_set = ImageDataset(df, "test", build_transform(checkpoint["config"]["model"], eval_resize_short=eval_resize_short))
     check_held_out(test_set.frame, checkpoint)
     loader = DataLoader(test_set, batch_size=settings["batch_size"], shuffle=False,
                         num_workers=settings["num_workers"], pin_memory=device.type == "cuda")
@@ -79,9 +79,11 @@ def main():
     parser.add_argument("--output-dir")
     parser.add_argument("--device", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--allow-smoke", action="store_true")
+    parser.add_argument("--eval-resize-short", type=int,
+                        help="native_crop only: resize every test image's short side to this length before the center crop (size-matched check)")
     args = parser.parse_args()
     try:
-        evaluate(args.checkpoint, args.config, args.output_dir, args.device, args.allow_smoke)
+        evaluate(args.checkpoint, args.config, args.output_dir, args.device, args.allow_smoke, args.eval_resize_short)
     except (ValueError, OSError, RuntimeError) as exc:
         parser.exit(1, f"Error: {exc}\n")
 
