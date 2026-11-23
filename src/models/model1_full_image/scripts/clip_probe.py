@@ -82,6 +82,7 @@ def main():
     parser.add_argument("--per-source-train", type=int, default=3000, help="0 = use every train image")
     parser.add_argument("--per-domain", type=int, default=400)
     parser.add_argument("--multi-view", action="store_true", help="Add the mean of four 224 tiles from a 448 view to the global feature")
+    parser.add_argument("--batch", type=int, default=32, help="Images held in memory at once; lower it for 12-48 MP phone photos")
     args = parser.parse_args()
     config = load_config(args.config)
     root = config["data"]["root"]
@@ -96,7 +97,7 @@ def main():
     train = train.assign(w=train.source.map(share) / train.source.map(train.source.value_counts()))
     val = sample(meta[meta.split == "val"], args.per_domain)
     test = sample(meta[meta.split == "test"], args.per_domain)
-    feats = {name: extract(list(frame.image_path), root, output / f"{name}_clip.npz", device, multi=args.multi_view)
+    feats = {name: extract(list(frame.image_path), root, output / f"{name}_clip.npz", device, batch=args.batch, multi=args.multi_view)
              for name, frame in [("train", train), ("val", val), ("test", test)]}
     head = train_head(feats["train"], train.label.to_numpy(), train.w.to_numpy())
     torch.save(head.state_dict(), output / "clip_head.pt")
