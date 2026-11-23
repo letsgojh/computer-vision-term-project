@@ -9,9 +9,9 @@
 | 항목 | 내용 |
 |---|---|
 | 담당 | 모델 1 (브랜치 `feat/GiwonCha-model1`) |
-| 현재 버전 | **v2**. EfficientNet-B0, 원본 해상도 256 크롭, Defactify 학습, 노이즈·블러·샤프닝 증강 |
-| 개발 과정 | 버전별 구조, 결과, 한계, 변경 이유는 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 있습니다 |
-| 알려진 한계 | 직접 찍은 폰 사진을 AI로 오판하는 경우가 많습니다. iPhone 사진 120장 중 AI 확률 30% 미만은 5%뿐이었습니다. 실사용 전 반드시 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "실사용 테스트"를 확인하세요 |
+| 현재 버전 | **최종: CLIP ViT-L/14(고정) + 선형 분류기**, 공개 데이터(Defactify, FraudBench) + 팀 데이터로 학습 (`scripts/clip_probe.py`, `clip_detector.py`) |
+| 개발 과정 | v1~v4 CNN, CLIP, 결합 실험의 구조, 결과, 한계, 변경 이유는 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 있습니다 |
+| 알려진 한계 | 처음 보는 기종의 진짜 폰 사진 중 AI 확률 30% 미만은 84.5%입니다(목표 90%). 다만 "AI"로 판정된 것은 0%입니다. 학습하지 않은 생성기는 76%만 "의심" 이상으로 잡습니다(목표 80%). 1차 선별기로 쓰고 모델 2와 함께 판단하세요([DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "시스템 차원의 정리") |
 
 모델 1은 사진 전체를 봅니다. 메모 영역 탐지, OCR, 조작 영역 분할은 모델 2의 범위입니다.
 
@@ -55,7 +55,19 @@ $env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선
 
 ## 3. 데모 실행
 
-학습된 체크포인트(`best_model.pth`)와 `thresholds.json`이 필요합니다. 둘 다 Git에 없으므로 공유 드라이브에서 받아 같은 폴더 구조로 둡니다.
+학습된 체크포인트와 `thresholds.json`이 필요합니다. 둘 다 Git에 없으므로 공유 드라이브에서 받아 같은 폴더 구조로 둡니다.
+
+**최종 모델 (CLIP)**: `clip_head.pt`와 같은 폴더의 `thresholds.json`을 씁니다. CLIP 가중치(약 1.7GB)는 처음 실행할 때 Hugging Face에서 내려받습니다(`pip install transformers` 필요).
+
+```powershell
+.\.venv\Scripts\python.exe -m app.model1_demo `
+  --checkpoint outputs/model1/clip_probe_v3data/clip_head.pt `
+  --version "CLIP (최종)"
+```
+
+CLIP은 사진의 짧은 변을 224로 줄이고 가운데 정사각형을 봅니다. 히트맵도 그 정사각형 위에 그립니다.
+
+**이전 CNN 모델 (v2)**:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.model1_demo `
@@ -67,7 +79,7 @@ $env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선
 
 - 사진을 올리고 **판별**을 누르면 AI 확률과 3단계 판정이 나옵니다. "AI"로 판정되면 히트맵도 나옵니다.
 - 슬라이더로 의심 임계값과 AI 임계값을 바로 바꿀 수 있습니다. **임계값 저장**을 누르면 `thresholds.json`에 기록됩니다.
-- 사진은 짧은 변을 512로 맞춘 뒤, 겹치는 256×256 조각으로 전체를 덮어 점수를 평균냅니다. 조각별 Grad-CAM은 가장자리를 부드럽게 섞어 이어 붙입니다.
+- CNN 모델은 사진의 짧은 변을 512로 맞춘 뒤, 겹치는 256×256 조각으로 전체를 덮어 점수를 평균냅니다. 조각별 Grad-CAM은 가장자리를 부드럽게 섞어 이어 붙입니다.
 
 히트맵은 모델이 판단에 주목한 영역일 뿐, 생성·조작된 위치의 증거가 아닙니다. 해석 시 주의점은 [XAI.md](XAI.md)를 참고하세요.
 
@@ -193,7 +205,9 @@ smoke 체크포인트를 평가하거나 추론하려면 `--allow-smoke`를 명�
 | `scripts/download_tigas.py`, `scripts/visualize_tigas_samples.py` | TIGAS 선택 다운로드와 샘플 확인 |
 | `scripts/check_gpu.py`, `check_model.py`, `check_checkpoint.py`, `check_gradcam.py` | 환경, 모델, 체크포인트, Grad-CAM 점검 |
 | `scripts/validate_dataset.py`, `create_smoke_test_data.py` | 학습 전 데이터 검증 / 합성 fixture 생성 |
-| `../../../app/model1_demo.py` | Gradio 데모 |
+| `../../../app/model1_demo.py` | Gradio 데모 (`clip_head.pt`면 CLIP, 그 외는 CNN) |
+| `clip_detector.py` | 최종 CLIP 모델의 점수와 ViT Grad-CAM 히트맵 (데모용) |
+| `scripts/clip_probe.py` | CLIP 특징 추출 + 선형 분류기 학습·평가 |
 | `../../../tests/model1/` | 단위 테스트 (`python -m unittest discover -s tests/model1`) |
 | `DEVELOPMENT_LOG.md` | 버전별 개발 과정, 결과, 한계 |
 | `XAI.md`, `VALIDATION.md`, `TIGAS_DOWNLOAD.md` | Grad-CAM 해석 / v0 구현 검증 기록 / TIGAS 다운로드 방법 |
