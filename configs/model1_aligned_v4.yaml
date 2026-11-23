@@ -45,7 +45,7 @@ training:
   batch_size: 64
   learning_rate: 0.0003
   weight_decay: 0.01
-  num_workers: 4
+  num_workers: 2
   amp: true
   amp_init_scale: 1024
   patience: 4
