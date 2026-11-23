@@ -53,8 +53,12 @@ def run_epoch(model, loader, criterion, device, optimizer=None, scaler=None, amp
     return total_loss / len(labels), labels, probabilities, updates
 
 
-def train(config_path, device_name=None):
-    """Train with validation F1 selection, best/last checkpoints and early stopping."""
+def train(config_path, device_name=None, resume=False):
+    """Train with validation F1 selection, best/last checkpoints and early stopping.
+
+    resume=True continues from output_dir/checkpoints/last_model.pth after the last finished epoch
+    (a partly trained epoch is lost) with the same metadata, optimizer, scheduler and RNG state.
+    """
     config = load_config(config_path)
     settings, data = config["training"], config["data"]
     if device_name is not None:
@@ -75,12 +79,20 @@ def train(config_path, device_name=None):
     if settings["tune_threshold"] and val_set.frame.label.nunique() != 2:
         raise ValueError("Validation requires both Real and Fake to tune a threshold")
     output = Path(settings["output_dir"])
-    if any((output / "checkpoints" / name).exists() for name in ["best_model.pth", "last_model.pth"]):
-        raise FileExistsError("Output already contains checkpoints. Choose a fresh training.output_dir.")
+    last_path = output / "checkpoints" / "last_model.pth"
+    if resume:
+        if not last_path.exists():
+            raise FileNotFoundError(f"--resume needs {last_path}")
+        state = torch.load(last_path, map_location="cpu", weights_only=False)
+        if state["metadata_sha256"] != hashlib.sha256(Path(data["metadata"]).read_bytes()).hexdigest():
+            raise ValueError("Metadata changed since the checkpoint; resuming would mix datasets")
+    elif any((output / "checkpoints" / name).exists() for name in ["best_model.pth", "last_model.pth"]):
+        raise FileExistsError("Output already contains checkpoints. Choose a fresh training.output_dir or pass --resume.")
     for name in ["checkpoints", "logs", "figures", "predictions"]:
         (output / name).mkdir(parents=True, exist_ok=True)
-    (output / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    shutil.copyfile(data["metadata"], output / "metadata_snapshot.csv")
+    if not resume:
+        (output / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+        shutil.copyfile(data["metadata"], output / "metadata_snapshot.csv")
     from src.models.model1_full_image.scripts.check_gpu import inspect_environment
     environment = inspect_environment()
     save_json(output / "environment.json", environment)
@@ -108,9 +120,23 @@ def train(config_path, device_name=None):
     amp = bool(settings["amp"] and device.type == "cuda")
     scaler = torch.amp.GradScaler("cuda", init_scale=settings.get("amp_init_scale", 1024)) if amp else None
     criterion = nn.BCEWithLogitsLoss()
-    best_f1, stale, history = -1.0, 0, []
+    best_f1, stale, history, start = -1.0, 0, [], 1
+    if resume:
+        model.load_state_dict(state["model_state"])
+        optimizer.load_state_dict(state["optimizer_state"])
+        scheduler.load_state_dict(state["scheduler_state"])
+        if scaler is not None and state["scaler_state"]:
+            scaler.load_state_dict(state["scaler_state"])
+        torch.set_rng_state(state["torch_rng_state"])
+        generator.set_state(state["loader_rng_state"])
+        best_f1, stale, start = state["best_f1"], state["stale_epochs"], state["epoch"] + 1
+        history = pd.read_csv(output / "logs" / "training.csv").to_dict("records")[:state["epoch"]]
+        print(f"Resuming after epoch {state['epoch']} (best val F1 {best_f1:.4f}, stale {stale})")
+        if stale >= settings["patience"]:
+            print("Already early-stopped; nothing to resume")
+            return
     print(f"Training: AMP={amp}, batch_size={batch_size}, pretrained={config['model']['pretrained']}")
-    for epoch in range(1, settings["epochs"] + 1):
+    for epoch in range(start, settings["epochs"] + 1):
         lr = optimizer.param_groups[0]["lr"]
         train_loss, train_y, train_p, updates = run_epoch(model, train_loader, criterion, device, optimizer, scaler, amp)
         if updates == 0:
@@ -155,9 +181,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/model1_team.yaml")
     parser.add_argument("--device", choices=["auto", "cuda", "mps", "cpu"], help="Override training.device")
+    parser.add_argument("--resume", action="store_true", help="Continue from output_dir/checkpoints/last_model.pth")
     args = parser.parse_args()
     try:
-        train(args.config, args.device)
+        train(args.config, args.device, args.resume)
     except torch.cuda.OutOfMemoryError:
         parser.exit(1, "CUDA out of memory: reduce training.batch_size in the config.\n")
     except (ValueError, FileNotFoundError, FileExistsError) as exc:
