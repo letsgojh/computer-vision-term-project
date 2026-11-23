@@ -2,6 +2,7 @@
 
 Run from the repository root:
   python -m app.model1_demo --checkpoint outputs/model1/defactify_native_crop/checkpoints/best_model.pth
+  python -m app.model1_demo --checkpoint outputs/model1/clip_probe_v3data/clip_head.pt   (final model, CLIP)
 
 Shows the AI probability, a three-level verdict (pass / suspicious / AI) and, for AI
 verdicts, a Grad-CAM heatmap. Both thresholds are sliders; "save" writes them back to
@@ -19,24 +20,39 @@ from src.models.model1_full_image.thresholds import LABELS_KO, load_thresholds, 
 HEATMAP_NOTE = "히트맵은 모델이 판단에 주목한 영역입니다. 조작·생성된 위치를 증명하지 않습니다."
 
 
+def is_clip(checkpoint_path):
+    return Path(checkpoint_path).name == "clip_head.pt"
+
+
 def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
-    model, checkpoint, device = load_detector(checkpoint_path, device)
-    version = version or Path(checkpoint_path).resolve().parent.parent.name
+    if is_clip(checkpoint_path):
+        from src.models.model1_full_image.clip_detector import analyze_clip, load_clip_detector
+        detector = load_clip_detector(checkpoint_path, device)
+        score_image = lambda image: analyze_clip(detector, image)
+        version = version or Path(checkpoint_path).resolve().parent.name
+        model_note = "CLIP ViT-L/14 고정 + 선형 분류기 · 사진 가운데 정사각형을 봅니다"
+        fallback = {"suspicious": 0.5, "ai": 0.8}
+    else:
+        model, checkpoint, device = load_detector(checkpoint_path, device)
+        score_image = lambda image: analyze(model, checkpoint, device, image, with_heatmap=True)
+        version = version or Path(checkpoint_path).resolve().parent.parent.name
+        model_note = f"학습 epoch {checkpoint['epoch']}"
+        fallback = {"suspicious": 0.5, "ai": checkpoint["threshold"]}
     thresholds_path = Path(thresholds_path)
-    stored = load_thresholds(thresholds_path) if thresholds_path.exists() else {"suspicious": 0.5, "ai": checkpoint["threshold"]}
+    stored = load_thresholds(thresholds_path) if thresholds_path.exists() else fallback
 
     def run(image, suspicious, ai):
         if image is None:
             return "이미지를 올려 주세요.", None, ""
         if suspicious > ai:
             return "의심 임계값은 AI 임계값보다 클 수 없습니다.", None, ""
-        result = analyze(model, checkpoint, device, image, with_heatmap=True)
+        result = score_image(image)
         score = result["fake_probability"]
         level = verdict(score, suspicious, ai)
         crops = result["crop_probabilities"]
-        text = (f"## {LABELS_KO[level]}\n\n"
-                f"**AI 생성 확률: {score:.1%}**  (의심 ≥ {suspicious:.2f}, AI ≥ {ai:.2f})\n\n"
-                f"이미지 조각 {len(crops)}개 평균 · 최저 {min(crops):.1%} · 최고 {max(crops):.1%}")
+        text = f"## {LABELS_KO[level]}\n\n**AI 생성 확률: {score:.1%}**  (의심 ≥ {suspicious:.2f}, AI ≥ {ai:.2f})"
+        if len(crops) > 1:
+            text += f"\n\n이미지 조각 {len(crops)}개 평균 · 최저 {min(crops):.1%} · 최고 {max(crops):.1%}"
         if level == "ai":
             return text, result["heatmap"], f"{HEATMAP_NOTE}\n\n<small>{DISCLAIMER}</small>"
         return text, None, ""
@@ -51,7 +67,7 @@ def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
 
     with gr.Blocks(title="AI 생성 이미지 판별 (모델 1)") as demo:
         gr.Markdown("# 중고거래 사진 AI 생성 판별\n사진을 올리면 AI로 생성됐을 확률과 판정을 보여줍니다.\n\n"
-                    f"**모델 버전:** {version} · 학습 epoch {checkpoint['epoch']} · 개발 기록: `src/models/model1_full_image/DEVELOPMENT_LOG.md`")
+                    f"**모델 버전:** {version} · {model_note} · 개발 기록: `src/models/model1_full_image/DEVELOPMENT_LOG.md`")
         with gr.Row():
             with gr.Column():
                 image = gr.Image(type="pil", label="사진")
@@ -78,7 +94,8 @@ def main():
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--version", help='Shown in the header, e.g. "v1 — Defactify, 노이즈 지름길 있음". Default: run folder name')
     args = parser.parse_args()
-    thresholds = args.thresholds or Path(args.checkpoint).resolve().parent.parent / "thresholds.json"
+    run_dir = Path(args.checkpoint).resolve().parent  # CLIP head sits in the run folder; CNN checkpoints in run/checkpoints
+    thresholds = args.thresholds or (run_dir if is_clip(args.checkpoint) else run_dir.parent) / "thresholds.json"
     build_app(args.checkpoint, thresholds, args.device, args.version).launch(server_name="127.0.0.1", server_port=args.port)
 
 
