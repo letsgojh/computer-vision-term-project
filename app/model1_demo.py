@@ -2,7 +2,7 @@
 
 Run from the repository root:
   python -m app.model1_demo --checkpoint outputs/model1/defactify_native_crop/checkpoints/best_model.pth
-  python -m app.model1_demo --checkpoint outputs/model1/clip_probe_v3data/clip_head.pt   (final model, CLIP)
+  python -m app.model1_demo --checkpoint outputs/model1/clip_probe_v3data_3crop/clip_head.pt   (final model, CLIP, whole photo in 3 crops)
 
 Shows the AI probability, a three-level verdict (pass / suspicious / AI) and, for AI
 verdicts, a Grad-CAM heatmap. Both thresholds are sliders; "save" writes them back to
@@ -25,12 +25,15 @@ def is_clip(checkpoint_path):
 
 
 def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
+    thresholds_path = Path(thresholds_path)
+    stored = load_thresholds(thresholds_path) if thresholds_path.exists() else None
     if is_clip(checkpoint_path):
         from src.models.model1_full_image.clip_detector import analyze_clip, load_clip_detector
         detector = load_clip_detector(checkpoint_path, device)
-        score_image = lambda image: analyze_clip(detector, image)
+        views = int((stored or {}).get("views", 1))  # thresholds were calibrated for this many views
+        score_image = lambda image: analyze_clip(detector, image, views=views)
         version = version or Path(checkpoint_path).resolve().parent.name
-        model_note = "CLIP ViT-L/14 고정 + 선형 분류기 · 사진 가운데 정사각형을 봅니다"
+        model_note = "CLIP ViT-L/14 고정 + 선형 분류기 · " + ("사진 전체를 224 크롭 3개로 봅니다" if views == 3 else "사진 가운데 정사각형을 봅니다")
         fallback = {"suspicious": 0.5, "ai": 0.8}
     else:
         model, checkpoint, device = load_detector(checkpoint_path, device)
@@ -38,8 +41,7 @@ def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
         version = version or Path(checkpoint_path).resolve().parent.parent.name
         model_note = f"학습 epoch {checkpoint['epoch']}"
         fallback = {"suspicious": 0.5, "ai": checkpoint["threshold"]}
-    thresholds_path = Path(thresholds_path)
-    stored = load_thresholds(thresholds_path) if thresholds_path.exists() else fallback
+    stored = stored or fallback
 
     def run(image, suspicious, ai):
         if image is None:

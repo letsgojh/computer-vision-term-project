@@ -11,7 +11,7 @@
 | 담당 | 모델 1 (브랜치 `feat/GiwonCha-model1`) |
 | 현재 버전 | **최종: CLIP ViT-L/14(고정) + 선형 분류기**, 공개 데이터(Defactify, FraudBench) + 팀 데이터로 학습 (`scripts/clip_probe.py`, `clip_detector.py`) |
 | 개발 과정 | v1~v4 CNN, CLIP, 결합 실험의 구조, 결과, 한계, 변경 이유는 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 있습니다 |
-| 알려진 한계 | 처음 보는 기종의 진짜 폰 사진 중 AI 확률 30% 미만은 84.5%입니다(목표 90%). 다만 "AI"로 판정된 것은 0%입니다. 학습하지 않은 생성기는 76%만 "의심" 이상으로 잡습니다(목표 80%). 1차 선별기로 쓰고 모델 2와 함께 판단하세요([DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "시스템 차원의 정리") |
+| 알려진 한계 | 처음 보는 기종의 진짜 폰 사진 중 AI 확률 30% 미만은 88.6%입니다(목표 90%). "AI"로 판정된 것은 219장 중 1장입니다. 학습하지 않은 생성기는 75%만 "의심" 이상으로 잡습니다(목표 80%). 1차 선별기로 쓰고 모델 2와 함께 판단하세요([DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "시스템 차원의 정리") |
 
 모델 1은 사진 전체를 봅니다. 메모 영역 탐지, OCR, 조작 영역 분할은 모델 2의 범위입니다.
 
@@ -61,11 +61,11 @@ $env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.model1_demo `
-  --checkpoint outputs/model1/clip_probe_v3data/clip_head.pt `
+  --checkpoint outputs/model1/clip_probe_v3data_3crop/clip_head.pt `
   --version "CLIP (최종)"
 ```
 
-CLIP은 사진의 짧은 변을 224로 줄이고 가운데 정사각형을 봅니다. 히트맵도 그 정사각형 위에 그립니다.
+CLIP은 224×224 정사각형만 입력받습니다. 그래서 사진의 짧은 변을 224로 줄인 뒤, 가운데와 긴 변 양쪽 끝의 224 크롭 3개로 사진 전체를 보고 세 점수(로짓)를 평균합니다. `thresholds.json`의 `"views": 3`이 이 방식을 켭니다. 히트맵도 세 크롭 위치에 그려 사진 전체를 덮습니다.
 
 **이전 CNN 모델 (v2)**:
 
