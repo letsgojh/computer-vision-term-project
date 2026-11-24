@@ -90,7 +90,9 @@ for r in rows.to_dict("records"):
     recs.append(dict(image=stem, p_fake=prob, pred=int(prob >= thr), mask_area=area, cam_in_mask=ge, cam_peak_in_mask=gp,
                      occ_in_mask=oe, occ_peak_in_mask=op, occ_max_drop=occ_max,
                      diff_area=darea, cam_in_diff=gd, cam_peak_in_diff=gdp, occ_in_diff=od, occ_peak_in_diff=odp))
-    panels.append((stem, prob, crop, g, o, dk))
+    sc = min(1.0, 400 / max(crop.size)); ts = (max(1, round(crop.width * sc)), max(1, round(crop.height * sc)))
+    small = lambda h: np.asarray(Image.fromarray(h.astype(np.float32), mode="F").resize(ts, Image.BILINEAR))
+    panels.append((stem, prob, crop.resize(ts), small(g), small(o), small(dk)))  # 원본 크기를 다 들고 있으면 RAM 7GB에서 OOM
     print(f"{len(recs)}/{len(rows)} {stem} p={prob:.2f} cam_in={ge:.2f} occ_in={oe:.2f} area={area:.2f}", flush=True)
 
 res = pd.DataFrame(recs); res.to_csv(OUT / "mask_overlap.csv", index=False)
