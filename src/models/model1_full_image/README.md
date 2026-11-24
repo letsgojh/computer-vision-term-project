@@ -9,7 +9,7 @@
 | 항목 | 내용 |
 |---|---|
 | 담당 | 모델 1 (브랜치 `feat/GiwonCha-model1`) |
-| 현재 버전 | **최종: CLIP ViT-L/14(고정) + 선형 분류기**, 공개 데이터(Defactify, FraudBench) + 팀 데이터로 학습 (`scripts/clip_probe.py`, `clip_detector.py`) |
+| 현재 버전 | **최종: CLIP ViT-L/14(고정) + 선형 분류기**, 부분 편집은 **v6 원본 해상도 판별기**로 보완, 공개 데이터(Defactify, FraudBench) + 팀 데이터로 학습 (`scripts/clip_probe.py`, `clip_detector.py`) |
 | 개발 과정 | v1~v4 CNN, CLIP, 결합 실험의 구조, 결과, 한계, 변경 이유는 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)에 있습니다 |
 | 알려진 한계 | 처음 보는 기종의 진짜 폰 사진 중 AI 확률 30% 미만은 84.5%입니다(목표 90%). 다만 "AI"로 판정된 것은 0%입니다. 학습하지 않은 생성기는 76%만 "의심" 이상으로 잡습니다(목표 80%). 1차 선별기로 쓰고 모델 2와 함께 판단하세요([DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)의 "시스템 차원의 정리") |
 
@@ -62,10 +62,16 @@ $env:TIGAS_ROOT     = "D:\tigas-download-root"  # TIGAS 교차 테스트용 (선
 ```powershell
 .\.venv\Scripts\python.exe -m app.model1_demo `
   --checkpoint outputs/model1/clip_probe_v3data/clip_head.pt `
-  --version "CLIP (최종)"
+  --local-checkpoint outputs/model1/local_native_v6/checkpoints/best_model.pth `
+  --version "CLIP + 부분 편집 v6"
 ```
 
-CLIP은 사진의 짧은 변을 224로 줄이고 가운데 정사각형을 봅니다. 히트맵도 그 정사각형 위에 그립니다.
+- **CLIP**: 처음부터 AI로 생성된 사진을 봅니다. 사진의 짧은 변을 224로 줄이고 가운데 정사각형을 보며, 히트맵도 그 정사각형 위에 그립니다.
+- **v6 부분 편집 판별기** (`--local-checkpoint`, 선택): 진짜 사진의 일부만 AI로 바꾼 편집(예: 메모 날짜 위조)을 찾습니다.
+  - 사진을 원본 해상도 그대로 256 조각으로 훑고, 카메라 노이즈가 없는 조각을 찾습니다. 의심 조각은 사진 위에 칸으로 표시됩니다.
+  - 임계값은 `outputs/model1/local_native_v6/thresholds.json`에 있는 로짓 값입니다.
+  - 흔적이 원본 해상도에만 남으므로, **줄이지 않은 원본 사진**을 올려야 합니다.
+- 최종 판정은 두 판별기 중 더 심각한 쪽입니다.
 
 **이전 CNN 모델 (v2)**:
 
@@ -133,7 +139,7 @@ TIGAS를 받는 방법은 [TIGAS_DOWNLOAD.md](TIGAS_DOWNLOAD.md)에 있습니다
 
 | 설정 | 용도 |
 |---|---|
-| `configs/model1_defactify_v2.yaml` | **현재 버전(v2)**. v1과 같고, 진짜·가짜 모두에 노이즈·블러·샤프닝 증강을 적용합니다 |
+| `configs/model1_defactify_v2.yaml` | 이전 CNN 버전(v2). v1과 같고, 진짜·가짜 모두에 노이즈·블러·샤프닝 증강을 적용합니다 |
 | `configs/model1_defactify.yaml` | v1. Defactify, `preprocess: native_crop`, 256 크롭, 생성기 hold-out |
 | `configs/model1_tigas_crosstest.yaml` | Defactify로 학습한 모델을 TIGAS로 평가합니다(평가 전용) |
 | `configs/model1_tigas_*.yaml` | v0. TIGAS 학습, letterbox 384 |
@@ -207,6 +213,7 @@ smoke 체크포인트를 평가하거나 추론하려면 `--allow-smoke`를 명�
 | `scripts/validate_dataset.py`, `create_smoke_test_data.py` | 학습 전 데이터 검증 / 합성 fixture 생성 |
 | `../../../app/model1_demo.py` | Gradio 데모 (`clip_head.pt`면 CLIP, 그 외는 CNN) |
 | `clip_detector.py` | 최종 CLIP 모델의 점수와 ViT Grad-CAM 히트맵 (데모용) |
+| `local_detector.py` | v6 부분 편집 판별: 원본 해상도 조각 스캔과 의심 조각 표시 (데모용) |
 | `scripts/clip_probe.py` | CLIP 특징 추출 + 선형 분류기 학습·평가 |
 | `../../../tests/model1/` | 단위 테스트 (`python -m unittest discover -s tests/model1`) |
 | `DEVELOPMENT_LOG.md` | 버전별 개발 과정, 결과, 한계 |
