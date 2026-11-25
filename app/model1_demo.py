@@ -3,13 +3,19 @@
 Run from the repository root:
   python -m app.model1_demo --checkpoint outputs/model1/defactify_native_crop/checkpoints/best_model.pth
   python -m app.model1_demo --checkpoint outputs/model1/clip_probe_v3data_3crop/clip_head.pt   (final model, CLIP, whole photo in 3 crops)
+  add --local-checkpoint outputs/model1/local_native_v6/checkpoints/best_model.pth for partial edits
 
 Shows the AI probability, a three-level verdict (pass / suspicious / AI) and, for AI
 verdicts, a Grad-CAM heatmap. Both thresholds are sliders; "save" writes them back to
 thresholds.json so the team default changes for everyone using that file.
+With --local-checkpoint, the photo is also scanned at native resolution for partial AI edits
+(v6, thresholds from that run's thresholds.json). The final verdict is the more severe of the
+two: the detectors look for different forgeries, so either one flagging is enough. Suspicious
+tiles are shown on the photo.
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import gradio as gr
@@ -18,13 +24,22 @@ from src.models.model1_full_image.inference import DISCLAIMER, analyze, load_det
 from src.models.model1_full_image.thresholds import LABELS_KO, load_thresholds, save_thresholds, verdict
 
 HEATMAP_NOTE = "히트맵은 모델이 판단에 주목한 영역입니다. 조작·생성된 위치를 증명하지 않습니다."
+LOCAL_NOTE = "표시된 칸은 카메라 노이즈가 없어 AI로 다시 그려졌을 가능성이 높은 영역입니다. 촬영한 화면(모니터)도 높게 나올 수 있습니다."
+SEVERITY = {"pass": 0, "suspicious": 1, "ai": 2}
 
 
 def is_clip(checkpoint_path):
     return Path(checkpoint_path).name == "clip_head.pt"
 
 
-def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
+def build_app(checkpoint_path, thresholds_path, device="auto", version=None, local_checkpoint=None):
+    local = None
+    if local_checkpoint:
+        from src.models.model1_full_image.local_detector import scan, tile_heatmap
+        local_model = load_detector(local_checkpoint, device)
+        # Logit thresholds (not 0-1 probabilities), so not load_thresholds()
+        local_th = json.loads((Path(local_checkpoint).resolve().parent.parent / "thresholds.json").read_text(encoding="utf-8"))
+        local = (local_model, local_th, scan, tile_heatmap)
     thresholds_path = Path(thresholds_path)
     stored = load_thresholds(thresholds_path) if thresholds_path.exists() else None
     if is_clip(checkpoint_path):
@@ -55,6 +70,16 @@ def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
         text = f"## {LABELS_KO[level]}\n\n**AI 생성 확률: {score:.1%}**  (의심 ≥ {suspicious:.2f}, AI ≥ {ai:.2f})"
         if len(crops) > 1:
             text += f"\n\n이미지 조각 {len(crops)}개 평균 · 최저 {min(crops):.1%} · 최고 {max(crops):.1%}"
+        if local is not None:
+            (model_l, ckpt_l, dev_l), th, scan, tile_heatmap = local
+            logits, corners, scanned = scan(model_l, ckpt_l, dev_l, image)
+            local_level = "ai" if logits.max() >= th["ai"] else "suspicious" if logits.max() >= th["suspicious"] else "pass"
+            overall = max(level, local_level, key=SEVERITY.get)
+            text = (f"## {LABELS_KO[overall]}\n\n**전체 생성 판별 (CLIP): {score:.1%}** → {LABELS_KO[level]}  (의심 ≥ {suspicious:.2f}, AI ≥ {ai:.2f})\n\n"
+                    f"**부분 편집 판별 (원본 해상도 {scanned.width}×{scanned.height}, 조각 {len(logits)}개): 최고 점수 {logits.max():.1f}** → "
+                    f"{LABELS_KO[local_level]}  (의심 ≥ {th['suspicious']:.1f}, AI ≥ {th['ai']:.1f})")
+            if local_level != "pass":
+                return text, tile_heatmap(scanned, logits, corners, th["suspicious"], th["ai"]), f"{LOCAL_NOTE}\n\n<small>{DISCLAIMER}</small>"
         if level == "ai":
             return text, result["heatmap"], f"{HEATMAP_NOTE}\n\n<small>{DISCLAIMER}</small>"
         return text, None, ""
@@ -81,7 +106,7 @@ def build_app(checkpoint_path, thresholds_path, device="auto", version=None):
                 saved = gr.Markdown()
             with gr.Column():
                 verdict_text = gr.Markdown()
-                heatmap = gr.Image(label="Grad-CAM 히트맵 (AI 판정 시)", interactive=False)
+                heatmap = gr.Image(label="히트맵 (AI 판정 또는 부분 편집 의심 시)", interactive=False)
                 note = gr.Markdown()
         button.click(run, [image, suspicious, ai], [verdict_text, heatmap, note])
         save_button.click(save, [suspicious, ai], saved)
@@ -95,10 +120,11 @@ def main():
     parser.add_argument("--device", default="auto")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--version", help='Shown in the header, e.g. "v1 — Defactify, 노이즈 지름길 있음". Default: run folder name')
+    parser.add_argument("--local-checkpoint", help="v6 native-resolution partial-edit detector (optional)")
     args = parser.parse_args()
     run_dir = Path(args.checkpoint).resolve().parent  # CLIP head sits in the run folder; CNN checkpoints in run/checkpoints
     thresholds = args.thresholds or (run_dir if is_clip(args.checkpoint) else run_dir.parent) / "thresholds.json"
-    build_app(args.checkpoint, thresholds, args.device, args.version).launch(server_name="127.0.0.1", server_port=args.port)
+    build_app(args.checkpoint, thresholds, args.device, args.version, args.local_checkpoint).launch(server_name="127.0.0.1", server_port=args.port)
 
 
 if __name__ == "__main__":
