@@ -61,9 +61,9 @@ def regenerate(vae, name, region, noise, device):
     return to_pil_image((y[0].clamp(-1, 1).cpu() + 1) / 2).crop((0, 0, w, h))
 
 
-def make_edit(image, vae, name, rng, device):
+def make_edit(image, vae, name, rng, device, area_range=(0.01, 0.08)):
     w, h = image.size
-    area = rng.uniform(0.01, 0.08) * w * h
+    area = rng.uniform(*area_range) * w * h
     aspect = math.exp(rng.uniform(math.log(0.5), math.log(2)))
     bw, bh = min(w, int(math.sqrt(area * aspect))), min(h, int(math.sqrt(area / aspect)))
     x0, y0 = rng.randint(0, w - bw), rng.randint(0, h - bh)
