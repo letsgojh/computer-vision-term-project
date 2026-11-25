@@ -21,6 +21,7 @@
 ② 가짜 생성 (A·B, C)        → data/fake/{A,B,C,masks}/ + metadata/fake_mapping.csv   [src/generation]
 ③ 후처리 · split            → data/processed/{original,kakao,resize,recapture}/ + data/splits/split.csv   [src/preprocess]
 ④ 모델 학습 (모델 1, 모델 2) → outputs/checkpoints/, outputs/predictions/   [src/models]
+   모델 3은 학습 없이 점수로 판별 → src/models/model3_TrainingFree/
 ⑤ 평가 · 분석               → outputs/results/   [src/evaluation]
 ⑥ 약한 유형 보강 → 재학습    → ②로 돌아가 train에만 추가
 ```
@@ -38,10 +39,29 @@
     ├── generation/     # ② 가짜 생성
     ├── preprocess/     # ③ 후처리 · split
     ├── models/
-    │   ├── model1_full_image/  # ④ 전체 이미지 분류
-    │   └── model2_memo/        # ④ 메모 영역 중심
+    │   ├── model1_full_image/      # ④ 전체 이미지 분류
+    │   ├── model2_memo/            # ④ 메모 영역 중심
+    │   └── model3_TrainingFree/    # 학습 없이 재구성·고주파 점수로 판별
     └── evaluation/     # ⑤ 평가 · 분석
 ```
+
+## 모델 3 (`src/models/model3_TrainingFree`)
+
+AeroBlade 재구성 오차, RDD 디바이어싱, WaRPAD를 한 검사기로 묶었습니다. 가짜 사진으로 학습하지 않고, 실제 사진 점수 분포와 비교해 판정합니다. 실행 방법은 해당 폴더의 README를 봅니다.
+
+추가된 파일:
+
+- `src/models/model3_TrainingFree/detect.py`
+- `src/models/model3_TrainingFree/requirements.txt`
+- `src/models/model3_TrainingFree/README.md`
+- `src/models/model3_TrainingFree/detector/__init__.py`
+- `src/models/model3_TrainingFree/detector/haar.py`
+- `src/models/model3_TrainingFree/detector/images.py`
+- `src/models/model3_TrainingFree/detector/pipeline.py`
+- `src/models/model3_TrainingFree/detector/rdd.py`
+- `src/models/model3_TrainingFree/detector/scores.py`
+- `src/models/model3_TrainingFree/detector/warpad.py`
+- `src/models/model3_TrainingFree/tests/test_scores.py`
 
 ## 환경 설정
 
