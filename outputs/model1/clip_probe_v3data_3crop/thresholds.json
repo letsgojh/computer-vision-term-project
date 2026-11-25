@@ -1,0 +1,20 @@
+{
+  "suspicious": 0.45320984721183777,
+  "ai": 0.8066666126251221,
+  "target_recall": 0.95,
+  "max_real_fpr": 0.01,
+  "review_fpr": 0.05,
+  "validation_rates": {
+    "suspicious": {
+      "fake_recall": 0.9502398081534772,
+      "real_fpr": 0.11157601115760112
+    },
+    "ai": {
+      "fake_recall": 0.6606714628297362,
+      "real_fpr": 0.009762900976290097
+    }
+  },
+  "head": "C:\\Users\\차기원\\orca\\projects\\computer-vision-term-project\\outputs\\model1\\clip_probe_v3data\\clip_head.pt",
+  "views": 3,
+  "condition": "mean logit of CLIP center view + two end crops (short side 224)"
+}

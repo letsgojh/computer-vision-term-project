@@ -1,0 +1,7 @@
+{
+  "suspicious": 16.162070083618154,
+  "ai": 23.693670120239254,
+  "score": "max tile logit",
+  "rule": "suspicious = 5% / ai = 1% false-alarm rate on real val photos",
+  "source": "C:\\Users\\차기원\\orca\\projects\\computer-vision-term-project\\outputs\\model1\\native_eval_v6\\report.json"
+}
